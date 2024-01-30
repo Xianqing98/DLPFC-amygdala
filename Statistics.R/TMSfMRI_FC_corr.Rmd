@@ -1,0 +1,252 @@
+---
+title: "fMRIresponseAMY~RSFC"
+author: "Xianqing"
+date: "4/5/2023"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(readr)
+library(patchwork)
+library(ggsignif)
+library(psych) # load correlation
+library(RColorBrewer)#color
+library(car)
+setwd("C:\\Users\\xjl19\\Desktop")
+```
+
+
+```{r}
+FC_lDLPFC_AMY <- read.csv("out03_functional_connectivity_z_LDLPFC.csv")
+TMSres <- read.csv("out02_img_file_info_tms_response_hc_zscore_gm.3.csv")
+TMSres_lDLPFC <- filter(TMSres, site == "L_aMFG" | site == "L_pMFG")
+TMSres_lDLPFC_AMY <- TMSres_lDLPFC[c(3,4,5,7,8)]
+TMSres_laDLPFC_AMY <- filter(TMSres_lDLPFC_AMY, site == "L_aMFG")
+TMSres_lpDLPFC_AMY <- filter(TMSres_lDLPFC_AMY, site == "L_pMFG")
+FC_TMSres_a <- left_join(FC_lDLPFC_AMY[c(1:5)], TMSres_laDLPFC_AMY)
+FC_TMSres_p <- left_join(FC_lDLPFC_AMY[c(1,2,6:8)], TMSres_lpDLPFC_AMY)
+
+```
+
+
+```{r}
+m.LAMY_La <- lm(FIRST_L_amyg_small ~ L_aMFG_10mm.FIRST_L_amyg_small, data = FC_TMSres_a)
+m.LAMY_La <- lm(FIRST_L_amyg_small ~ L_aMFG_10mm.FIRST_L_amyg_small, data = FC_TMSres_a[-c(1,11,18,40,55),])
+summary(m.LAMY_La)
+plot(m.LAMY_La, which = 4)
+cooks.distance(m.LAMY_La)
+
+m.LAMY_Lp <- lm(FIRST_L_amyg_small ~ L_pMFG_10mm.FIRST_L_amyg_small, data = FC_TMSres_p)
+m.LAMY_Lp <- lm(FIRST_L_amyg_small ~ L_pMFG_10mm.FIRST_L_amyg_small, data = FC_TMSres_p[-c(7,21,52,54),])
+summary(m.LAMY_Lp)
+plot(m.LAMY_Lp, which = 4)
+cooks.distance(m.LAMY_Lp)
+
+m.RAMY_La <- lm(FIRST_R_amyg_small ~ L_aMFG_10mm.FIRST_R_amyg_small, data = FC_TMSres_a) 
+m.RAMY_La <- lm(FIRST_R_amyg_small ~ L_aMFG_10mm.FIRST_R_amyg_small, data = FC_TMSres_a[-c(15,40,48),]) 
+summary(m.RAMY_La)
+plot(m.RAMY_La, which = 4)
+cooks.distance(m.RAMY_La)
+
+m.RAMY_Lp <- lm(FIRST_R_amyg_small ~ L_pMFG_10mm.FIRST_R_amyg_small, data = FC_TMSres_p) #sig
+cor.test(FC_TMSres_p$L_pMFG_10mm.FIRST_R_amyg_small, 
+         FC_TMSres_p$FIRST_R_amyg_small) # r = 0.26, p = 0.027*
+m.RAMY_Lp <- lm(FIRST_R_amyg_small ~ L_pMFG_10mm.FIRST_R_amyg_small, data = FC_TMSres_p[-c(33,54),]) #sig
+cor.test(FC_TMSres_p[-c(33,54),]$L_pMFG_10mm.FIRST_R_amyg_small, 
+         FC_TMSres_p[-c(33,54),]$FIRST_R_amyg_small) # r = 0.28, p = 0.021*
+summary(m.RAMY_Lp)
+plot(m.RAMY_Lp, which = 4)
+cooks.distance(m.RAMY_Lp)
+
+p.RAMY_Lp_ori <- ggplot(FC_TMSres_p, aes(y = FIRST_R_amyg_small, x = L_pMFG_10mm.FIRST_R_amyg_small))+
+# p.RAMY_Lp <- ggplot(FC_TMSres_p[-c(33,54),], aes(y = FIRST_R_amyg_small, x = L_pMFG_10mm.FIRST_R_amyg_small))+
+  annotate("text", x=-0.3, y = 2, label="r = 0.26, p = 0.027*", size=5)+ # ori
+  # annotate("text", x=-0.3, y = 2, label="r = 0.28, p = 0.021*", size=5)+
+  geom_point(size = 2, alpha =.3) + 
+  geom_smooth(method = 'lm', size = 1.5, col = "dodgerblue3", fill = "dodgerblue3", alpha=.12)+
+  xlab("FC (Fisher Z)") + ylab("TMS induced response")+ 
+  ylim(-3,2.5)+
+  ggtitle("L posterior DLPFC - R AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=1))+
+  theme(axis.ticks=element_line(color="black",size=1,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.2)))+
+  theme(axis.title = element_text(color = "black", size = 16))
+p.RAMY_Lp_ori
+p.RAMY_Lp
+
+
+m.BAMY_La <- lm(FIRST_B_amyg_small ~ L_aMFG_10mm.FIRST_B_amyg_small, data = FC_TMSres_a) 
+m.BAMY_La <- lm(FIRST_B_amyg_small ~ L_aMFG_10mm.FIRST_B_amyg_small, data = FC_TMSres_a[-c(1,15,40),]) 
+summary(m.BAMY_La)
+plot(m.BAMY_La, which = 4)
+cooks.distance(m.BAMY_La)
+
+m.BAMY_Lp <- lm(FIRST_B_amyg_small ~ L_pMFG_10mm.FIRST_B_amyg_small, data = FC_TMSres_p) 
+m.BAMY_Lp <- lm(FIRST_B_amyg_small ~ L_pMFG_10mm.FIRST_B_amyg_small, data = FC_TMSres_p[-c(33,7,21,54),]) #sig
+cor.test(FC_TMSres_p[-c(33,7,21,54),]$L_pMFG_10mm.FIRST_B_amyg_small, 
+         FC_TMSres_p[-c(33,7,21,54),]$FIRST_B_amyg_small) # r = 0.28, p = 0.023*
+summary(m.BAMY_Lp)
+plot(m.BAMY_Lp, which = 4)
+cooks.distance(m.BAMY_Lp)
+
+p.BAMY_Lp_ori <- ggplot(FC_TMSres_p, aes(y = FIRST_B_amyg_small, x = L_pMFG_10mm.FIRST_B_amyg_small))+
+# p.BAMY_Lp <- ggplot(FC_TMSres_p[-c(33,7,21,54),], aes(y = FIRST_B_amyg_small, x = L_pMFG_10mm.FIRST_B_amyg_small))+
+# annotate("text", x=-0.3, y = 2, label="r = 0.28, p = 0.021*", size=5)+
+  geom_point(size = 2, alpha =.3) + 
+  geom_smooth(method = 'lm', size = 1.5, col = "dodgerblue3", fill = "dodgerblue3", alpha=.12)+
+  xlab("FC (Fisher Z)") + ylab("TMS induced response")+ 
+  ylim(-3,2.5)+
+  ggtitle("L posterior DLPFC - AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=1))+
+  theme(axis.ticks=element_line(color="black",size=1,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.2)))+
+  theme(axis.title = element_text(color = "black", size = 16))
+p.BAMY_Lp_ori
+p.BAMY_Lp
+
+
+
+```
+
+
+```{r}
+setwd("C:\\Users\\xjl19\\Desktop\\TMS-iEEG\\all_Figures")
+pdf(file = "fMRI_TMSres_FC_corr.pdf", height = 6, width = 4.5)
+plot(m.RAMY_Lp, which = 4)
+plot(m.meanSD3_tvs, which = 4)
+p.RAMY_Lp_ori
+p.RAMY_Lp
+plot(m.BAMY_Lp, which = 4)
+p.BAMY_Lp_ori
+p.BAMY_Lp
+plot(m.RAMY_Lp_abs, which = 4)
+p.RAMY_Lp_abs_ori
+p.RAMY_Lp_abs
+plot(m.BAMY_La_abs, which = 4)
+p.BAMY_La_abs_ori
+p.BAMY_La_abs
+plot(m.BAMY_Lp_abs, which = 4)
+p.BAMY_Lp_abs_ori
+p.BAMY_Lp_abs
+dev.off()
+```
+
+```{r abs(FC)}
+m.LAMY_La_abs <- lm(FIRST_L_amyg_small ~ abs(L_aMFG_10mm.FIRST_L_amyg_small), data = FC_TMSres_a)
+m.LAMY_La_abs <- lm(FIRST_L_amyg_small ~ abs(L_aMFG_10mm.FIRST_L_amyg_small), data = FC_TMSres_a[-c(1,11,26,40),])
+summary(m.LAMY_La_abs)
+plot(m.LAMY_La_abs, which = 4)
+cooks.distance(m.LAMY_La_abs)
+
+m.LAMY_Lp_abs <- lm(FIRST_L_amyg_small ~ abs(L_pMFG_10mm.FIRST_L_amyg_small), data = FC_TMSres_p)
+m.LAMY_Lp_abs <- lm(FIRST_L_amyg_small ~ abs(L_pMFG_10mm.FIRST_L_amyg_small), data = FC_TMSres_p[-c(21,25,47,52),])
+summary(m.LAMY_Lp_abs)
+plot(m.LAMY_Lp_abs, which = 4)
+cooks.distance(m.LAMY_Lp_abs)
+
+m.RAMY_La_abs <- lm(FIRST_R_amyg_small ~ abs(L_aMFG_10mm.FIRST_R_amyg_small), data = FC_TMSres_a) 
+m.RAMY_La_abs <- lm(FIRST_R_amyg_small ~ abs(L_aMFG_10mm.FIRST_R_amyg_small), data = FC_TMSres_a[-c(16),]) 
+summary(m.RAMY_La_abs)
+plot(m.RAMY_La_abs, which = 4)
+cooks.distance(m.RAMY_La_abs)
+
+m.RAMY_Lp_abs <- lm(FIRST_R_amyg_small ~ abs(L_pMFG_10mm.FIRST_R_amyg_small), data = FC_TMSres_p) #sig
+cor.test(abs(FC_TMSres_p$L_pMFG_10mm.FIRST_R_amyg_small), 
+         FC_TMSres_p$FIRST_R_amyg_small) # r = -0.26, p = 0.033*
+m.RAMY_Lp_abs <- lm(FIRST_R_amyg_small ~ abs(L_pMFG_10mm.FIRST_R_amyg_small), data = FC_TMSres_p[-c(54),]) #sig**
+summary(m.RAMY_Lp_abs)
+plot(m.RAMY_Lp_abs, which = 4)
+cooks.distance(m.RAMY_Lp_abs)
+cor.test(abs(FC_TMSres_p[-c(54),]$L_pMFG_10mm.FIRST_R_amyg_small), 
+         FC_TMSres_p[-c(54),]$FIRST_R_amyg_small) # r = -0.35, p = 0.004**
+
+# p.RAMY_Lp_abs_ori <- ggplot(FC_TMSres_p, aes(y = FIRST_R_amyg_small, x = abs(L_pMFG_10mm.FIRST_R_amyg_small)))+
+p.RAMY_Lp_abs <- ggplot(FC_TMSres_p[-c(54),], aes(y = FIRST_R_amyg_small, x = abs(L_pMFG_10mm.FIRST_R_amyg_small)))+
+  # annotate("text", x=0.35, y = 2, label="r = -0.26, p = 0.033*", size=5)+ # ori
+  annotate("text", x=0.35, y = 2, label="r = -0.35, p = 0.004**", size=5)+
+  geom_point(size = 2, alpha =.3) + 
+  geom_smooth(method = 'lm', size = 1.5, col = "dodgerblue3", fill = "dodgerblue3", alpha=.12)+
+  xlab("Absolute FC (Fisher Z)") + ylab("TMS induced response")+ 
+  ylim(-3,2.5)+
+  ggtitle("L posterior DLPFC - R AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=1))+
+  theme(axis.ticks=element_line(color="black",size=1,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.2)))+
+  theme(axis.title = element_text(color = "black", size = 16))
+p.RAMY_Lp_abs_ori
+p.RAMY_Lp_abs
+
+
+m.BAMY_La_abs <- lm(FIRST_B_amyg_small ~ abs(L_aMFG_10mm.FIRST_B_amyg_small), data = FC_TMSres_a) 
+m.BAMY_La_abs <- lm(FIRST_B_amyg_small ~ abs(L_aMFG_10mm.FIRST_B_amyg_small), data = FC_TMSres_a[-c(1,11,16,26),]) # sig
+cor.test(abs(FC_TMSres_a[-c(1,11,16,26),]$L_aMFG_10mm.FIRST_B_amyg_small), 
+         FC_TMSres_a[-c(1,11,16,26),]$FIRST_B_amyg_small) # r = -0.26, p = 0.035*
+summary(m.BAMY_La_abs)
+plot(m.BAMY_La_abs, which = 4)
+cooks.distance(m.BAMY_La_abs)
+
+p.BAMY_La_abs_ori <- ggplot(FC_TMSres_a, aes(y = FIRST_B_amyg_small, x = abs(L_aMFG_10mm.FIRST_B_amyg_small)))+
+# p.BAMY_La_abs <- ggplot(FC_TMSres_a[-c(1,11,16,26),], aes(y = FIRST_B_amyg_small, x = abs(L_aMFG_10mm.FIRST_B_amyg_small)))+
+#   annotate("text", x=0.3, y = 2, label="r = -0.26, p = 0.035*", size=5)+
+  geom_point(size = 2, alpha =.3) + 
+  geom_smooth(method = 'lm', size = 1.5, col = "dodgerblue3", fill = "dodgerblue3", alpha=.12)+
+  xlab("Absolute FC (Fisher Z)") + ylab("TMS induced response")+ 
+  ylim(-3,2.5)+
+  ggtitle("L anterior DLPFC - AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=1))+
+  theme(axis.ticks=element_line(color="black",size=1,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.2)))+
+  theme(axis.title = element_text(color = "black", size = 16))
+p.BAMY_La_abs_ori
+p.BAMY_La_abs
+
+
+
+m.BAMY_Lp_abs <- lm(FIRST_B_amyg_small ~ abs(L_pMFG_10mm.FIRST_B_amyg_small), data = FC_TMSres_p) 
+m.BAMY_Lp_abs <- lm(FIRST_B_amyg_small ~ abs(L_pMFG_10mm.FIRST_B_amyg_small), data = FC_TMSres_p[-c(21,54),]) #sig
+cor.test(abs(FC_TMSres_p[-c(21,54),]$L_pMFG_10mm.FIRST_B_amyg_small), 
+         FC_TMSres_p[-c(21,54),]$FIRST_B_amyg_small) # r = -0.26, p = 0.031*
+summary(m.BAMY_Lp_abs)
+plot(m.BAMY_Lp_abs, which = 4)
+cooks.distance(m.BAMY_Lp_abs)
+
+# p.BAMY_Lp_abs_ori <- ggplot(FC_TMSres_p, aes(y = FIRST_B_amyg_small, x = abs(L_pMFG_10mm.FIRST_B_amyg_small)))+
+p.BAMY_Lp_abs <- ggplot(FC_TMSres_p[-c(21,54),], aes(y = FIRST_B_amyg_small, x = abs(L_pMFG_10mm.FIRST_B_amyg_small)))+
+  annotate("text", x=0.35, y = 2, label="-0.26, p = 0.031*", size=5)+
+  geom_point(size = 2, alpha =.3) + 
+  geom_smooth(method = 'lm', size = 1.5, col = "dodgerblue3", fill = "dodgerblue3", alpha=.12)+
+  xlab("Absolute FC (Fisher Z)") + ylab("TMS induced response")+ 
+  ylim(-3,2.5)+
+  ggtitle("L posterior DLPFC - AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=1))+
+  theme(axis.ticks=element_line(color="black",size=1,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.2)))+
+  theme(axis.title = element_text(color = "black", size = 16))
+p.BAMY_Lp_abs_ori
+p.BAMY_Lp_abs
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,822 @@
+---
+title: "CCEP L-DLPFC amy"
+author: "Xianqing Liu"
+date: "4/26/2023"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(purrr)
+library(readxl)
+library(lme4)
+library(lmerTest)
+library(readr)
+library(patchwork)
+library(ggsignif)
+library(psych) # load correlation
+library(RColorBrewer)#color
+library(car)
+rootpath <- "/Users/xianqing/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/3_ProcessedData_Backup/"
+rootpath <- "C:/Users/xjl19/OneDrive - University of Iowa/1_TMS_iEEG/3_ProcessedData_Backup/"
+rootpath <- "/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/3_ProcessedData_Backup/"
+wd <- paste0(rootpath,"allPatients_iEEGdata_csv/CCEP_csv_R-DLPFC_amy")
+wd <- paste0(rootpath,"allPatients_iEEGdata_csv/CCEP_csv_L-DLPFC_amy/2hp_nodetrend")
+wd <- paste0(rootpath,"allPatients_iEEGdata_csv/CCEP_csv_L-DLPFC_amy/sessions")
+wd <- paste0(rootpath,"allPatients_iEEGdata_csv/CCEP_csv_L-IFG_amy/2hp_nodetrend")
+
+setwd(wd)
+```
+
+### Read neural data
+
+```{r read new CCEP csv}
+CCEP_amy <- read_csv(list.files(wd, pattern = '*.csv'))
+names(CCEP_amy) <- c("Patient","TrialNumber","Channel","Time","Amplitude")
+names(CCEP_amy) <- c("Patient","Session","TrialNumber","Channel","Time","Amplitude")
+CCEP_amy$Channel <- paste(CCEP_amy$Patient, CCEP_amy$Channel, sep = "_")
+CCEP_amy$Channel <- paste(CCEP_amy$Session, CCEP_amy$Channel, sep = "_")
+# add ROI info
+chlinfo_amy <- read_excel(paste0(rootpath, "Selected_Channel_AMY.xlsx"),
+                          sheet = "esTT L-DLPFC") # l dlpfc
+chlinfo_amy <- read_excel(paste0(rootpath, "Selected_Channel_AMY.xlsx"),
+                          sheet = "esTT L-DLPFC sessions")
+chlinfo_amy <- read_excel(paste0(rootpath, "Selected_Channel_AMY.xlsx"),
+                          sheet = "esTT R-DLPFC") 
+chlinfo_amy <- read_excel(paste0(rootpath, "Selected_Channel_AMY.xlsx"),
+                          sheet = "esTT L-IFG") # l vlpfc
+chlinfo_amy <- read_excel(paste0(rootpath, "Selected_Channel_AMY.xlsx"),
+                          sheet = "esTT R-IFG") 
+chlinfo_amy <- read_excel(paste0(rootpath, "Selected_Channel_AMY.xlsx"),
+                          sheet = "esTT L-Parietal") # l dlpfc
+chlinfo_amy <- read_excel(paste0(rootpath, "Selected_Channel_AMY.xlsx"),
+                          sheet = "esTT R-Parietal") 
+
+chlinfo_amy$Channel <- paste(chlinfo_amy$Patient, chlinfo_amy$Channel, sep = "_LFPx")
+chlinfo_amy$Channel <- paste(chlinfo_amy$Session, chlinfo_amy$Channel, sep = "_LFPx")
+CCEP_amy <- left_join(CCEP_amy, chlinfo_amy[c(2,14,22)])
+
+
+# delete questionable channels
+### L-DLPFC
+# CCEP_amy <- filter(CCEP_amy, 
+#                    Channel != "634_LFPx55" &
+#                    Channel != "634_LFPx56" )
+CCEP_amy <- filter(CCEP_amy, Patient != 460, 
+                     Session != "625-123" &
+                     Session != "634-155" )
+### R-DLPFC
+CCEP_amy <- filter(CCEP_amy, 
+                   Channel != "376_LFPx51" &
+                   Channel != "610_LFPx149")
+
+### L-Parietal
+CCEP_amy <- filter(CCEP_amy, 
+                   # Channel != "416_LFPx15" &
+                   Channel != "430_LFPx14")
+
+### R-Parietal
+CCEP_amy <- filter(CCEP_amy, Patient != 561)
+
+### L-IFG
+CCEP_amy <- filter(CCEP_amy, 
+                   Channel != "423_LFPx79" &
+                   Channel != "423_LFPx80" &
+                   Channel != "561_LFPx244")
+
+### R-IFG
+CCEP_amy <- filter(CCEP_amy, 
+                   Channel != "376_LFPx51" &
+                   Channel != "376_LFPx53" &
+                   Channel != "610_LFPx149")
+
+ChannelList <- CCEP_amy %>% group_by(Channel) %>% 
+  summarise(Patient = mean(Patient))
+ChannelList <- ChannelList[[1]]
+
+
+```
+
+```{r removing trials}
+CCEP_amy <- filter(CCEP_amy, Time >= -100 & Time <= 500)
+
+# calculate baseline SD for each trial
+base_trl_amy <- filter(CCEP_amy, Time < -10) %>%
+  group_by(Channel, TrialNumber) %>% 
+  summarise(base_trl_mean = mean(Amplitude), 
+            base_trl_sd = sd(Amplitude))
+CCEP_amy <- CCEP_amy %>% left_join(base_trl_amy) %>% 
+  mutate(SDchange = abs((Amplitude - base_trl_sd)/base_trl_sd),
+         SD = abs(Amplitude)/base_trl_sd)
+
+# identify trials to be removed
+CCEP_amy_8ms <- filter(CCEP_amy, Time == 8 & SD > 10)
+CCEP_amy_9_1000ms <- filter(CCEP_amy, Time > 8 & SD > 50)
+Deleted <- rbind(CCEP_amy_8ms, CCEP_amy_9_1000ms) %>% 
+  mutate(delete = 1) %>% 
+  group_by(Channel, TrialNumber) %>% 
+  summarise(delete = mean(delete))
+CCEP_amy <- CCEP_amy %>% left_join(Deleted)
+
+# removing trials
+CCEP_amy <- CCEP_amy %>% filter(is.na(delete))
+```
+
+
+```{r filtering bad trials}
+BadTrials <- CCEP_amy %>% group_by(Channel, TrialNumber) %>%
+  summarise(TrialNumber = mean(TrialNumber)) %>% 
+  left_join(chlinfo_amy[c(2,4)]) %>% 
+  mutate(bad = 0)
+
+for (i in 1:nrow(BadTrials)){
+  if (BadTrials$TrialNumber[i] %in%
+      as.numeric(strsplit(BadTrials$BadTrials_esTT[i], ";")[[1]])){
+      BadTrials$bad[i] <- 1
+      }
+}
+CCEP_amy <- left_join(CCEP_amy, BadTrials)
+CCEP_amy <- filter(CCEP_amy, bad == 0)
+```
+
+
+```{r plot EPs in all channels}
+CCEP_amy %>% 
+  # filter(DKT == "Left-Amygdala") %>%
+  # filter(DKT == "Right-Amygdala") %>%
+  # filter(is_lateral == 0) %>%
+  # filter(is_lateral == 1) %>%
+  group_by(Channel, Time) %>%
+  summarise(mean_amplitude = mean(Amplitude), se = sd(Amplitude)/sqrt(30)) %>%
+  ggplot(aes(Time, mean_amplitude))+
+  geom_ribbon(aes(ymin=mean_amplitude-se, ymax=mean_amplitude+se), fill = "dodgerblue3", alpha = .2)+
+  stat_summary(col="dodgerblue3", geom="line")+
+  geom_vline(xintercept=-8, linetype="dashed", size = .8)+
+  geom_vline(xintercept=8, linetype="dashed", size = .8)+
+  # geom_vline(xintercept=200, linetype="dashed", size = .8, col = "blue")+
+  geom_hline(yintercept=0, linetype="dotted", size = .8, col = "darkgray")+
+  # ylim(-10,10)+
+  ylab("Mean Amplitude")+theme_classic()+
+  facet_wrap(~Channel)
+```
+
+
+```{r}
+setwd('/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/Documents - JingJiang Lab/JiangLab/4_Projects/2_DLPFC_AMY_Bella/1_iES_iEEG')
+write.csv(CCEP_amy[c(1:7)], "CCEP_amy_LDLPFC.csv")
+write.csv(CCEP_amy[c(1:7)], "CCEP_amy_LVLPFC.csv")
+write.csv(CCEP_amy[c(1:7)], "CCEP_amy_RDLPFC.csv")
+```
+
+```{r normalization}
+CCEP_amy_avg <- CCEP_amy %>% 
+  group_by(Patient, Channel, Time, DKT, is_lateral) %>% 
+  summarise(EP = mean(Amplitude))
+
+# normalization
+baseline_amy <- filter(CCEP_amy_avg, Time < -10) %>%
+  group_by(Patient, Channel) %>% summarise(base_mean = mean(EP), 
+                                           base_sd = sd(EP))
+CCEP_amy_avg <- CCEP_amy_avg %>% left_join(baseline_amy) %>% 
+  mutate(CCEP_norm = (EP - base_mean)/base_sd,
+         SDchange = abs((EP - base_mean)/base_sd))
+
+
+setwd(rootpath)
+write.csv(CCEP_amy_avg, "CCEP_amy_avg_L-DLPFC.csv")
+write.csv(CCEP_amy_avg, "CCEP_amy_avg_L-DLPFC_b200.csv")
+write.csv(CCEP_amy_avg, "CCEP_amy_avg_R-DLPFC.csv")
+write.csv(CCEP_amy_avg, "CCEP_amy_avg_L-VLPFC.csv")
+write.csv(CCEP_amy_avg, "CCEP_amy_avg_L-VLPFC_b200.csv")
+
+write.csv(CCEP_amy_avg, "CCEP_amy_avg_R-VLPFC.csv")
+```
+
+
+
+```{r Whole amygdala}
+# baseline_wave <- CCEP_amy_avg %>% filter(Time < -10) %>% group_by(Time) %>% 
+#   summarise(baseline = mean(CCEP_norm),
+#             SD = mean(SDchange))
+# b_EP_95 = quantile(baseline_wave$EP, 0.95)
+# b_EP_05 = quantile(baseline_wave$EP, 0.05)
+# b_SD_95 = quantile(baseline_wave$SD, 0.95)
+# b_mean = mean(baseline_wave$EP)
+
+timecourse <- c(9:500)
+baseline_mean <- CCEP_amy_avg %>% filter(Time < -10) %>% group_by(Channel) %>% 
+  summarise(baseline_mean = mean(CCEP_norm))
+
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  EP_timepoint <- filter(CCEP_amy_avg, Time == timecourse[i])
+  EP_timepoint <- left_join(EP_timepoint, baseline_mean)
+  if (mean(EP_timepoint$CCEP_norm) >= 0) {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "greater")
+  } else {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(Time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_amy_sig <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+
+
+```{r left amygdala}
+# baseline_wave_L <- filter(CCEP_amy_avg, DKT == "Left-Amygdala" & Time < -10) %>% 
+#   group_by(Time) %>% 
+#   summarise(EP = mean(CCEP_norm),
+#             SD = mean(SDchange))
+# b_EP_95_L = quantile(baseline_wave_L$EP, 0.95)
+# b_EP_05_L = quantile(baseline_wave_L$EP, 0.05)
+# b_SD_95_L = quantile(baseline_wave_L$SD, 0.95)
+# b_mean_L = mean(baseline_wave_L$EP)
+
+baseline_mean_L <- filter(CCEP_amy_avg, DKT == "Left-Amygdala" & Time < -10) %>% 
+  group_by(Channel) %>% 
+  summarise(baseline_mean = mean(CCEP_norm))
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  EP_timepoint <- filter(CCEP_amy_avg, DKT == "Left-Amygdala" & Time == timecourse[i])
+  EP_timepoint <- left_join(EP_timepoint, baseline_mean_L)
+  if (mean(EP_timepoint$CCEP_norm) >= 0) {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "greater")
+  } else {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "less")
+  }
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(Time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_amy_L_sig <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+
+
+```{r Right amygdala}
+# baseline_wave_R <- filter(CCEP_amy_avg, DKT == "Right-Amygdala" & Time < -10) %>% 
+#   group_by(Time) %>% 
+#   summarise(EP = mean(CCEP_norm),
+#             SD = mean(SDchange))
+# b_EP_95_R = quantile(baseline_wave_R$EP, 0.95)
+# b_EP_05_R = quantile(baseline_wave_R$EP, 0.05)
+# b_SD_95_R = quantile(baseline_wave_R$SD, 0.95)
+# b_mean_R = mean(baseline_wave_R$EP)
+
+baseline_mean_R <- filter(CCEP_amy_avg, DKT == "Right-Amygdala" & Time < -10) %>% 
+  group_by(Channel) %>% 
+  summarise(baseline_mean = mean(CCEP_norm))
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  EP_timepoint <- filter(CCEP_amy_avg, DKT == "Right-Amygdala" & Time == timecourse[i])
+  EP_timepoint <- left_join(EP_timepoint, baseline_mean_R)
+  if (mean(EP_timepoint$CCEP_norm) >= 0) {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "greater")
+  } else {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(Time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_amy_R_sig <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+```{r Medial amygdala}
+# baseline_wave_me <- filter(CCEP_amy_avg, is_lateral == 0 & Time < -10) %>% 
+#   group_by(Time) %>% 
+#   summarise(EP = mean(CCEP_norm),
+#             SD = mean(SDchange))
+# b_EP_95_me = quantile(baseline_wave_me$EP, 0.95)
+# b_EP_05_me = quantile(baseline_wave_me$EP, 0.05)
+# b_SD_95_me = quantile(baseline_wave_me$SD, 0.95)
+# b_mean_me = mean(baseline_wave_me$EP)
+
+baseline_mean_me <- filter(CCEP_amy_avg, is_lateral == 0 & Time < -10) %>% 
+  group_by(Channel) %>% 
+  summarise(baseline_mean = mean(CCEP_norm))
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  EP_timepoint <- filter(CCEP_amy_avg, is_lateral == 0 & Time == timecourse[i])
+  EP_timepoint <- left_join(EP_timepoint, baseline_mean_me)
+  if (mean(EP_timepoint$CCEP_norm) >= 0) {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "greater")
+  } else {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(Time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_amy_me_sig <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+
+
+
+```{r Lateral amygdala}
+# baseline_wave_la <- filter(CCEP_amy_avg, is_lateral == 1 & Time < -10) %>% 
+#   group_by(Time) %>% 
+#   summarise(EP = mean(CCEP_norm),
+#             SD = mean(SDchange))
+# b_EP_95_la = quantile(baseline_wave_la$EP, 0.95)
+# b_EP_05_la = quantile(baseline_wave_la$EP, 0.05)
+# b_SD_95_la = quantile(baseline_wave_la$SD, 0.95)
+# b_mean_la = mean(baseline_wave_la$EP)
+
+baseline_mean_la <- filter(CCEP_amy_avg, is_lateral == 1 & Time < -10) %>% 
+  group_by(Channel) %>% 
+  summarise(baseline_mean = mean(CCEP_norm))
+
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  EP_timepoint <- filter(CCEP_amy_avg, is_lateral == 1 & Time == timecourse[i])
+  EP_timepoint <- left_join(EP_timepoint, baseline_mean_la)
+  if (mean(EP_timepoint$CCEP_norm) >= 0) {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "greater")
+  } else {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(Time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_amy_la_sig <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+
+```{r Medial left amygdala}
+# baseline_wave_me_L <- filter(CCEP_amy_avg, is_lateral == 0 & Time < -10 & DKT == "Left-Amygdala") %>% 
+#   group_by(Time) %>% 
+#   summarise(EP = mean(CCEP_norm),
+#             SD = mean(SDchange))
+# b_EP_95_me_L = quantile(baseline_wave_me_L$EP, 0.95)
+# b_EP_05_me_L = quantile(baseline_wave_me_L$EP, 0.05)
+# b_SD_95_me_L = quantile(baseline_wave_me_L$SD, 0.95)
+# b_mean_me_L = mean(baseline_wave_me_L$EP)
+
+baseline_mean_L_me <- filter(CCEP_amy_avg, DKT == "Left-Amygdala" & is_lateral == 0 & Time < -10) %>% 
+  group_by(Channel) %>% 
+  summarise(baseline_mean = mean(CCEP_norm))
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  EP_timepoint <- filter(CCEP_amy_avg, DKT == "Left-Amygdala" & is_lateral == 0 & Time == timecourse[i])
+  EP_timepoint <- left_join(EP_timepoint, baseline_mean_L_me)
+  if (mean(EP_timepoint$CCEP_norm) >= 0) {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "greater")
+  } else {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(Time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_amy_L_me_sig <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+
+```{r Medial right amygdala}
+# baseline_wave_me_R <- filter(CCEP_amy_avg, is_lateral == 0 & Time < -10 & DKT == "Right-Amygdala") %>% 
+#   group_by(Time) %>% 
+#   summarise(EP = mean(CCEP_norm),
+#             SD = mean(SDchange))
+# b_EP_95_me_R = quantile(baseline_wave_me_R$EP, 0.95)
+# b_EP_05_me_R = quantile(baseline_wave_me_R$EP, 0.05)
+# b_SD_95_me_R = quantile(baseline_wave_me_R$SD, 0.95)
+# b_mean_me_R = mean(baseline_wave_me_R$EP)
+
+baseline_mean_R_me <- filter(CCEP_amy_avg, is_lateral == 0 & Time < -10 & DKT == "Right-Amygdala") %>% 
+  group_by(Channel) %>% 
+  summarise(baseline_mean = mean(CCEP_norm))
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  EP_timepoint <- filter(CCEP_amy_avg, is_lateral == 0  & DKT == "Right-Amygdala" & Time == timecourse[i])
+  EP_timepoint <- left_join(EP_timepoint, baseline_mean_R_me)
+  if (mean(EP_timepoint$CCEP_norm) >= 0) {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "greater")
+  } else {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(Time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_amy_R_me_sig <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+
+```
+
+
+
+```{r Lateral left amygdala}
+# baseline_wave_la_L <- filter(CCEP_amy_avg, is_lateral == 1 & Time < -10 & DKT == "Left-Amygdala") %>% 
+#   group_by(Time) %>% 
+#   summarise(EP = mean(CCEP_norm),
+#             SD = mean(SDchange))
+# b_EP_95_la_L = quantile(baseline_wave_la_L$EP, 0.95)
+# b_EP_05_la_L = quantile(baseline_wave_la_L$EP, 0.05)
+# b_SD_95_la_L = quantile(baseline_wave_la_L$SD, 0.95)
+# b_mean_la_L = mean(baseline_wave_la_L$EP)
+
+baseline_mean_L_la <- filter(CCEP_amy_avg, is_lateral == 1 & Time < -10 & DKT == "Left-Amygdala") %>% 
+  group_by(Channel) %>% 
+  summarise(baseline_mean = mean(CCEP_norm))
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  EP_timepoint <- filter(CCEP_amy_avg, is_lateral == 1  & DKT == "Left-Amygdala" & Time == timecourse[i])
+  EP_timepoint <- left_join(EP_timepoint, baseline_mean_L_la)
+  if (mean(EP_timepoint$CCEP_norm) >= 0) {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "greater")
+  } else {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(Time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_amy_L_la_sig <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+
+```
+
+
+```{r Lateral right amygdala}
+# baseline_wave_la_R <- filter(CCEP_amy_avg, is_lateral == 1 & Time < -10 & DKT == "Right-Amygdala") %>% 
+#   group_by(Time) %>% 
+#   summarise(EP = mean(CCEP_norm),
+#             SD = mean(SDchange))
+# b_EP_95_la_R = quantile(baseline_wave_la_R$EP, 0.95)
+# b_EP_05_la_R = quantile(baseline_wave_la_R$EP, 0.05)
+# b_SD_95_la_R = quantile(baseline_wave_la_R$SD, 0.95)
+# b_mean_la_R = mean(baseline_wave_la_R$EP)
+
+baseline_mean_R_la <- filter(CCEP_amy_avg, is_lateral == 1 & Time < -10 & DKT == "Left-Amygdala") %>% 
+  group_by(Channel) %>% 
+  summarise(baseline_mean = mean(CCEP_norm))
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  EP_timepoint <- filter(CCEP_amy_avg, is_lateral == 1  & DKT == "Left-Amygdala" & Time == timecourse[i])
+  EP_timepoint <- left_join(EP_timepoint, baseline_mean_R_la)
+  if (mean(EP_timepoint$CCEP_norm) >= 0) {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "greater")
+  } else {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(Time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_amy_R_la_sig <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+
+## ptp
+
+```{r ptp P150 }
+# whole
+ptp1_amy <- 
+  filter(CCEP_amy_avg, Time >= 50 & Time <= 180) %>% 
+  group_by(Patient, Channel) %>% 
+  summarise(range1 = max(CCEP_norm)-min(CCEP_norm)) %>% 
+  mutate(Component = "P150")
+ptp1_amy <- 
+  filter(CCEP_amy_avg, Time >= -100 & Time <= -10) %>% 
+  group_by(Patient, Channel) %>% 
+  summarise(range1 = max(CCEP_norm)-min(CCEP_norm)) %>% 
+  mutate(Component = "Baseline") %>% 
+  rbind(ptp1_amy)
+t.test(range1 ~ Component, paired = T, data = ptp1_amy, alternative ="less") # t = -3.7669, df = 10, p-value = 0.00184
+# medial
+ptp1_amy_me <- 
+  filter(CCEP_amy_avg,  Time >= 50 & Time <= 180 & is_lateral == 0) %>% 
+  group_by(Patient, Channel) %>% 
+  summarise(range1 = max(CCEP_norm)-min(CCEP_norm)) %>% 
+  mutate(Component = "P150")
+ptp1_amy_me <- 
+  filter(CCEP_amy_avg, Time >= -100 & Time <= -10 & is_lateral == 0) %>% 
+  group_by(Patient, Channel) %>% 
+  summarise(range1 = max(CCEP_norm)-min(CCEP_norm)) %>% 
+  mutate(Component = "Baseline") %>% 
+  rbind(ptp1_amy_me)
+t.test(range1 ~ Component, paired = T, data = ptp1_amy_me, alternative ="less") # t = -2.42, df = 4, p-value = 0.03638
+# lateral
+ptp1_amy_la <- 
+  filter(CCEP_amy_avg,  Time >= 50 & Time <= 180 & is_lateral == 1) %>% 
+  group_by(Patient, Channel) %>% 
+  summarise(range1 = max(CCEP_norm)-min(CCEP_norm)) %>% 
+  mutate(Component = "P150")
+ptp1_amy_la <- 
+  filter(CCEP_amy_avg, Time >= -100 & Time <= -10 & is_lateral == 1) %>% 
+  group_by(Patient, Channel) %>% 
+  summarise(range1 = max(CCEP_norm)-min(CCEP_norm)) %>% 
+  mutate(Component = "Baseline") %>% 
+  rbind(ptp1_amy_la)
+t.test(range1 ~ Component, paired = T, data = ptp1_amy_la, alternative ="less") # t = -2.42, df = 4, p-value = 0.03638
+
+p.adjust(c(0.0000651,0.001387,0.01109), method="bonferroni") # 0.0001953 0.0041610 0.0332700
+```
+
+## Latency: medial vs lateral
+
+```{r Latency: medial vs lateral}
+# find timepoint having largest amplitude before 200ms
+CCEP_amy_avg_peak1 <- CCEP_amy_avg %>% filter(Time <= 250 & Time > 100) %>% 
+  group_by(Channel, is_lateral, DKT) %>% 
+  summarise(peak1 = max(CCEP_norm))
+CCEP_amy_avg_peak1 <- CCEP_amy_avg %>% filter(Time <= 250 & Time > 100) %>% 
+  left_join(CCEP_amy_avg_peak1) %>% 
+  filter(CCEP_norm == peak1)
+
+# manually identify the peak (it should have amplitude larger than the adjacent timepoints)
+CCEP_amy_avg_peak1$Time[1] <- 95
+CCEP_amy_avg_peak1$peak1[1] <- 2.6324080
+CCEP_amy_avg_peak1$peak1[1] <- 2.2352073 # b-200
+CCEP_amy_avg_peak1 <- CCEP_amy_avg_peak1[c(1:5,11)]
+CCEP_amy_avg_peak1_latency <- CCEP_amy_avg_peak1 %>% pivot_wider(names_from = is_lateral, values_from = Time)
+```
+
+```{r bootstrap}
+# Initialize
+set.seed(42)  # For reproducibility
+latency_me <- c(95, 174, 117, 113, 104)
+latency_la <- c(198, 166, 144, 130, 117, 162)
+num_bootstrap <- 10000
+
+# Calculate observed mean difference
+obs_diff <- mean(latency_me) - mean(latency_la)
+
+# Initialize a vector to hold bootstrap sample mean differences
+bootstrap_diffs <- numeric(num_bootstrap)
+
+# Generate bootstrap samples
+for (i in 1:num_bootstrap) {
+  bootstrap_sample_me <- sample(latency_me, size = length(latency_me), replace = TRUE)
+  bootstrap_sample_la <- sample(latency_la, size = length(latency_la), replace = TRUE)
+  bootstrap_diffs[i] <- mean(bootstrap_sample_me) - mean(bootstrap_sample_la)
+}
+
+# Calculate one-tailed p-value
+p_value <- sum(bootstrap_diffs <= obs_diff) / num_bootstrap
+
+# Display results
+cat("Observed mean difference:", obs_diff, "\n")
+cat("Bootstrap p-value:", p_value, "\n")
+
+# Optional: visualize bootstrap distribution
+library(ggplot2)
+ggplot(data.frame(diff = bootstrap_diffs), aes(x = diff)) +
+  geom_histogram(binwidth = 1, fill = "blue", alpha = 0.7) +
+  geom_vline(aes(xintercept = obs_diff), color = "red", linetype = "dashed", size = 1) +
+  ggtitle("Bootstrap Test Results") +
+  xlab("Difference in means") +
+  ylab("Frequency") +
+  annotate("text", x = obs_diff, y = Inf, label = paste("Observed mean difference:", round(obs_diff, 2)), vjust = 2, color = "red")
+```
+
+```{r}
+# comparing latencies: med vs lat
+t.test(c(180,179,117,113,104), c(235,167,142,131,119,160), alternative = "less")
+wilcox.test(c(180,179,117,113,104), c(235,167,142,131,119,160), alternative = "less")
+install.packages("coin")
+library(coin)
+latency_me <- c(180, 179, 117, 113, 104)
+latency_la <- c(235, 167, 142, 131, 119, 160)
+result <- wilcox_test(x = latency_me, y = latency_la, distribution = "exact")
+combined_data <- c(latency_me, latency_la)
+
+# Create a grouping variable
+group <- factor(c(rep("ME", length(latency_me)), rep("LA", length(latency_la))))
+
+# Create a data frame
+data_df <- data.frame(value = combined_data, group = group)
+
+# Perform the test
+CCEP_amy_avg_peak1$is_lateral <- factor(CCEP_amy_avg_peak1$is_lateral)
+wilcox_test(Time ~ is_lateral, data = CCEP_amy_avg_peak1, distribution = "exact", alternative = "less")
+
+
+## Permutation test
+# Function to calculate t-value
+calculate_t_value <- function(sample1, sample2) {
+  tt <- t.test(sample1, sample2, alternative = "less")
+  return(tt[[1]])
+}
+
+# Initialize
+set.seed(42) # for reproducibility
+latency_me <- c(95,174,117,113,104)
+latency_la <- c(198,166,144,130,117,162)
+n_permutations <- 10000
+observed_t_value <- calculate_t_value(latency_me, latency_la)
+permuted_t_values <- numeric(n_permutations)
+
+# Combine samples
+combined_sample <- c(latency_me, latency_la)
+
+# Generate permutations
+for (i in 1:n_permutations) {
+  permuted_sample <- sample(combined_sample, length(combined_sample))
+  permuted_sample1 <- permuted_sample[1:length(latency_me)]
+  permuted_sample2 <- permuted_sample[(length(latency_me) + 1):length(combined_sample)]
+  
+  permuted_t_values[i] <- calculate_t_value(permuted_sample1, permuted_sample2)
+}
+
+# Calculate p-value for one-sided test
+p_value <- sum(permuted_t_values <= observed_t_value) / n_permutations
+
+# Display results
+cat("Observed t-value:", observed_t_value, "\n")
+cat("Permutation-based p-value:", p_value, "\n")
+
+ggplot(data.frame(t_value = permuted_t_values), aes(x = t_value)) +
+  geom_histogram(binwidth = 0.2, fill = "blue3", alpha = 0.7) +
+  geom_vline(aes(xintercept = observed_t_value), color = "red", linetype = "dashed", size = 1) +
+  ggtitle("Permutation Test Results") +
+  xlab("t-values") +
+  ylab("Frequency") +
+  annotate("text", x = observed_t_value, y = Inf, 
+           label = paste("Observed t-value:", round(observed_t_value, 2)),
+           vjust = 2, color = "red")
+
+
+
+
+
+```
+
+
+
+```{r mean1: 100~200ms}
+# whole amy
+CCEP_mean_100_200ms <- CCEP_amy_avg %>% 
+  filter(Time >= 100 & Time <= 200) %>% 
+  group_by(Patient,Channel,DKT,is_lateral) %>% 
+  summarise(
+    mean1_CCEP_norm = mean(CCEP_norm),
+    max1_CCEP_norm = max(CCEP_norm),
+    min1_CCEP_norm = min(CCEP_norm)
+  ) %>% mutate(
+    range1_CCEP_norm = max1_CCEP_norm-min1_CCEP_norm
+  )
+
+CCEP_mean_100_200ms$is_lateral <- factor(CCEP_mean_100_200ms$is_lateral)
+summary(CCEP_mean_100_200ms)
+
+m.mean1_1 <- lm(mean1_CCEP_norm-b_EP_95 ~ is_lateral,
+                   data = CCEP_mean_100_200ms)
+
+summary(m.mean1_1)
+m.mean1 <- m.mean1_1
+summary(m.mean1)
+
+# left amy
+CCEP_mean_100_200ms_L <- CCEP_amy_avg %>% 
+  filter(Time >= 100 & Time <= 200 & DKT == "Left-Amygdala") %>% 
+  group_by(Patient,Channel,is_lateral) %>% 
+  summarise(
+    mean1_CCEP_norm = mean(CCEP_norm),
+    max1_CCEP_norm = max(CCEP_norm),
+    min1_CCEP_norm = min(CCEP_norm)
+  ) %>% mutate(
+    range1_CCEP_norm = max1_CCEP_norm-min1_CCEP_norm
+  )
+
+CCEP_mean_100_200ms_L$is_lateral <- factor(CCEP_mean_100_200ms_L$is_lateral)
+summary(CCEP_mean_100_200ms_L)
+
+m.mean1_L <- lm(mean1_CCEP_norm-b_EP_95_L ~ 1, 
+                   data = CCEP_mean_100_200ms_L)
+summary(m.mean1_L)
+
+# right amy
+CCEP_mean_100_200ms_R <- CCEP_amy_avg %>% 
+  filter(Time >= 100 & Time <= 200 & DKT == "Right-Amygdala") %>% 
+  group_by(Patient,Channel,is_lateral) %>% 
+  summarise(
+    mean1_CCEP_norm = mean(CCEP_norm),
+    max1_CCEP_norm = max(CCEP_norm),
+    min1_CCEP_norm = min(CCEP_norm)
+  ) %>% mutate(
+    range1_CCEP_norm = max1_CCEP_norm-min1_CCEP_norm
+  )
+
+CCEP_mean_100_200ms_R$is_lateral <- factor(CCEP_mean_100_200ms_R$is_lateral)
+summary(CCEP_mean_100_200ms_R)
+
+m.mean1_R <- lm(mean1_CCEP_norm-b_EP_95_R ~ 1, 
+                   data = CCEP_mean_100_200ms_R)
+summary(m.mean1_R)
+
+```

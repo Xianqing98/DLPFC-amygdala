@@ -1,0 +1,583 @@
+---
+title: "fMRIresponseAMY~RSFC"
+author: "Xianqing"
+date: "4/5/2023"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(readxl)
+library(stringr)
+library(lme4)
+library(lmerTest)
+library(readr)
+library(patchwork)
+library(ggsignif)
+library(psych) # load correlation
+library(RColorBrewer)#color
+library(car)
+rootpath <- "/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/3_ProcessedData_Backup/"
+wd <- paste0(rootpath,"allPatients_iEEGdata_csv/iTEP_csv_L-DLPFC_amy/1hp_detrend500")
+setwd(wd)
+load("~/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/3_ProcessedData_Backup/RData_iTEP/iTEP_csv_L-DLPFC_amy/iTEP_L_DLPFC_2hp_detrend500.RData")
+```
+
+
+
+```{r read FC}
+FC <- read.csv("/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/3_ProcessedData_Backup/FC_corr/FC_TEP_corr_L-DLPFC_amy.csv")
+FC <- FC %>% filter(Channel != "593_LFPx183" &
+                    Channel != "593_LFPx184" &
+                    Channel != "593_LFPx185" &
+                    Channel != "593_LFPx231" &
+                    Channel != "430_LFPx14" )
+FC <- FC %>% mutate(Subregion = ifelse(is_lateral == 0, "Medial", "Lateral"))
+FC$Subregion <- factor(FC$Subregion, levels = c("Medial", "Lateral"))
+```
+
+```{r read TEP}
+# load(paste0(rootpath,"allPatients_iEEGdata_csv/iTEP_csv_L-DLPFC_amy/iTEP_L_DLPFC_2hp_detrend500.RData"))
+TEP_amy_avg_tvs <- TEP_amy_avg[c(2:6,10)] %>% pivot_wider(names_from = Condition, values_from = iTEP_norm)
+TEP_amy_avg_100 <- TEP_amy_avg_tvs %>% mutate(diff = tms-sham) %>% 
+  filter(Time <= 113 & Time >= 49) %>% 
+  # filter(Time <= 91 & Time >= 52) %>% 
+  group_by(Channel,DKT,is_lateral) %>% 
+  summarise(
+    mean1_tms = mean(tms),
+    # sham_mean1 = mean(sham),
+    mean1_diff = mean(diff)
+  )
+ptp1 <- ptp1_amy %>% 
+pivot_wider(names_from = Condition, values_from = range1, names_prefix = "range1_") %>% 
+  mutate(range1_diff = range1_tms - range1_sham)
+TEP_amy_avg_100 <- TEP_amy_avg_100 %>% left_join(ptp1[c(2,3,5)])
+#200
+TEP_amy_avg_200 <- TEP_amy_avg_tvs %>% mutate(diff = tms-sham) %>% 
+  filter(Time <= 272 & Time >= 190) %>% 
+  group_by(Channel,DKT,is_lateral) %>% 
+  summarise(
+    mean2_tms = mean(tms),
+    # sham_mean2 = mean(sham),
+    mean2_diff = mean(diff)
+  )
+ptp2 <- ptp2_amy %>% 
+pivot_wider(names_from = Condition, values_from = range2, names_prefix = "range2_") %>% 
+  mutate(range2_diff = range2_tms - range2_sham)
+TEP_amy_avg_200 <- TEP_amy_avg_200 %>% left_join(ptp2[c(2,3,5)])
+
+# TEP_amy_avg_400 <- TEP_amy_avg_tvs %>% mutate(diff = tms-sham) %>% 
+#   filter(Time <= 330 & Time >= 337) %>% 
+#   group_by(Channel,DKT,is_lateral) %>% 
+#   summarise(
+#     tms_mean_400 = mean(tms),
+#     sham_mean_400 = mean(sham),
+#     diff_mean_400 = mean(diff)
+#   )
+
+# Medial
+TEP_amy_avg_100_me <- TEP_amy_avg_tvs %>% mutate(diff = tms-sham) %>% 
+  filter(Time <= 116 & Time >= 50 & is_lateral == 0) %>% 
+  group_by(Channel,DKT,is_lateral) %>% 
+  summarise(
+    mean1_tms = mean(tms),
+    # sham_mean1 = mean(sham),
+    mean1_diff = mean(diff)
+  )
+ptp1_me <- ptp1_amy_me %>% 
+pivot_wider(names_from = Condition, values_from = range1, names_prefix = "range1_") %>% 
+  mutate(range1_diff = range1_tms - range1_sham)
+TEP_amy_avg_100_me <- TEP_amy_avg_100_me %>% left_join(ptp1_me[c(2,3,5)])
+
+TEP_amy_avg_200_me <- TEP_amy_avg_tvs %>% mutate(diff = tms-sham) %>% 
+  filter(Time <= 238 & Time >= 191 & is_lateral == 0) %>% 
+  group_by(Channel,DKT,is_lateral) %>% 
+  summarise(
+    mean2_tms = mean(tms),
+    # sham_mean2 = mean(sham),
+    mean2_diff = mean(diff)
+  )
+ptp2_me <- ptp2_amy_me %>% 
+pivot_wider(names_from = Condition, values_from = range2, names_prefix = "range2_") %>% 
+  mutate(range2_diff = range2_tms - range2_sham)
+TEP_amy_avg_200_me <- TEP_amy_avg_200_me %>% left_join(ptp2_me[c(2,3,5)])
+
+# lateral
+TEP_amy_avg_100_la <- TEP_amy_avg_tvs %>% mutate(diff = tms-sham) %>% 
+  filter(Time <= 91 & Time >= 52 & is_lateral == 1) %>% 
+  group_by(Channel,DKT,is_lateral) %>% 
+  summarise(
+    mean1_tms = mean(tms),
+    # sham_mean1 = mean(sham),
+    mean1_diff = mean(diff)
+  )
+ptp1_la <- ptp1_amy_la %>% 
+pivot_wider(names_from = Condition, values_from = range1, names_prefix = "range1_") %>% 
+  mutate(range1_diff = range1_tms - range1_sham)
+TEP_amy_avg_100_la <- TEP_amy_avg_100_la %>% left_join(ptp1_la[c(1,2,4)])
+
+TEP_amy_avg_200_la <- TEP_amy_avg_tvs %>% mutate(diff = tms-sham) %>% 
+  filter(Time <= 256 & Time >= 211 & is_lateral == 1) %>% 
+  group_by(Channel,DKT,is_lateral) %>% 
+  summarise(
+    mean2_tms = mean(tms),
+    # sham_mean2 = mean(sham),
+    mean2_diff = mean(diff)
+  )
+ptp2_la <- ptp2_amy_la %>% 
+pivot_wider(names_from = Condition, values_from = range2, names_prefix = "range2_") %>% 
+  mutate(range2_diff = range2_tms - range2_sham)
+TEP_amy_avg_200_la <- TEP_amy_avg_200_la %>% left_join(ptp2_la[c(1,2,4)])
+```
+
+```{r FC ~ TEP}
+# 100ms
+FC_TEP_100 <- left_join(FC, TEP_amy_avg_100)
+shapiro.test(FC_TEP_100$z_lDLPFC_0_5Hz)
+shapiro.test(FC_TEP_100$mean1_tms)
+shapiro.test(FC_TEP_100$range1_tms)
+correlation <- corr.test(FC_TEP_100[,c(5,8:11)], method="spearman",adjust="fdr") 
+correlation <- corr.test(FC_TEP_100[,c(5,8:11)], method="pearson",adjust="fdr") 
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  # labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Pearson's r. corr_FIRST_gm_indiv_L_a_DLPFC")
+FC_TEP_100_new <- FC_TEP_100
+FC_TEP_100$mean1_tms_r01 <- FC_TEP_100$mean1_tms
+
+FC_TEP_100_new <- left_join(FC_TEP_100_new, FC_TEP_100[c(2,12)])
+FC_TEP_100_new <- FC_TEP_100_new[c(2,3,5,6,7,8,12)] %>% 
+  pivot_longer(cols = starts_with("mean1_tms"), names_to = "mean1_tms",)
+FC_TEP_100_new2 <- FC_TEP_100_new %>% pivot_wider(names_from = mean1_tms, values_from = value)
+
+ggplot(FC_TEP_100_new, aes(z_lDLPFC_0_5Hz, value, col = mean1_tms))+
+  # annotate("text", x=-0.07, y = 8,label="r = -0.26, p = 0.251", size=6.5)+ # ori
+  geom_point(size = 3, alpha =.4) + 
+  geom_smooth(method = 'lm', size = 2, se = FALSE)+
+  xlab("L DLPFC - AMY\nFC (Fisher Z)") + ylab("P70 Mean (SD), AMY")+ 
+  theme_bw()+
+  # theme(axis.line=element_line(linetype=1,color="black",size=.7))+
+  # theme(axis.ticks=element_line(color="black",size=.7,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)),
+  legend.position=c(0.2,0.1))+labs(fill="",col="",linetype ="")
+
+#200ms
+FC_TEP_200 <- left_join(FC, TEP_amy_avg_200)
+shapiro.test(FC_TEP_200$z_lDLPFC_0_5Hz)
+shapiro.test(FC_TEP_200$mean2_tms)
+shapiro.test(FC_TEP_200$range2_tms)
+correlation <- corr.test(FC_TEP_200[,c(5,8:11)], method="spearman",adjust="fdr") # sig
+correlation <- corr.test(FC_TEP_200[,c(5,8:11)], method="pearson",adjust="fdr")
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  # labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Pearson's r. corr_FIRST_gm_indiv_L_a_DLPFC")
+
+# #400ms
+# FC_TEP_400 <- left_join(FC, TEP_amy_avg_400)
+# correlation <- corr.test(FC_TEP_400[,c(5,8:11)], method="pearson",adjust="fdr") # sig
+# r <- correlation$r
+# p <- correlation$p
+# green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+# ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+#                   # labels=labels,
+#                   diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Pearson's r. corr_FIRST_gm_indiv_L_a_DLPFC")
+
+# Medial
+# 100
+FC_TEP_100_me <- left_join(FC, TEP_amy_avg_100_me) %>% filter(is_lateral == 0)
+shapiro.test(FC_TEP_100_me$z_lDLPFC_0_5Hz)
+shapiro.test(FC_TEP_100_me$mean1_tms)
+shapiro.test(FC_TEP_100_me$range1_tms)
+correlation <- corr.test(FC_TEP_100_me[,c(5,8:11)], method="spearman",adjust="fdr") # sig
+correlation <- corr.test(FC_TEP_100_me[,c(5,8:11)], method="pearson",adjust="fdr")
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  # labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Pearson's r. corr_FIRST_gm_indiv_L_a_DLPFC")
+
+#200ms
+FC_TEP_200_me <- left_join(FC, TEP_amy_avg_200_me) %>% filter(is_lateral == 0)
+shapiro.test(FC_TEP_200_me$z_lDLPFC_0_5Hz)
+shapiro.test(FC_TEP_200_me$mean2_tms)
+shapiro.test(FC_TEP_200_me$range2_tms)
+correlation <- corr.test(FC_TEP_200_me[,c(5,8:11)], method="spearman",adjust="fdr") # sig
+correlation <- corr.test(FC_TEP_200_me[,c(5,8:11)], method="pearson",adjust="fdr")
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  # labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Pearson's r. corr_FIRST_gm_indiv_L_a_DLPFC")
+
+# # lateral
+# # 100
+# FC_TEP_100_la <- left_join(FC, TEP_amy_avg_100_la) %>% filter(is_lateral == 1)
+# correlation <- corr.test(FC_TEP_100_la[,c(5,8:11)], method="spearman",adjust="fdr") # sig
+# r <- correlation$r
+# p <- correlation$p
+# green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+# ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+#                   # labels=labels,
+#                   diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Pearson's r. corr_FIRST_gm_indiv_L_a_DLPFC")
+# 
+# #200ms
+# FC_TEP_200_la <- left_join(FC, TEP_amy_avg_200_la) %>% filter(is_lateral == 1)
+# correlation <- corr.test(FC_TEP_200_la[,c(5,8:11)], method="spearman",adjust="fdr") # sig
+# r <- correlation$r
+# p <- correlation$p
+# green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+# ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+#                   # labels=labels,
+#                   diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Pearson's r. corr_FIRST_gm_indiv_L_a_DLPFC")
+
+```
+
+
+```{r model & plot 100ms}
+# medial
+cor.test(FC_TEP_100_me$z_lDLPFC_0_5Hz, FC_TEP_100_me$mean1_tms, method = "pearson") # r = 0.56, p = 0.076
+cor.test(FC_TEP_100_me$z_lDLPFC_0_5Hz, FC_TEP_100_me$mean1_tms, method = "spearman") # rho = 0.69, p = 0.023*
+
+cor.test(FC_TEP_100_me$z_lDLPFC_0_5Hz, FC_TEP_100_me$range1_tms, method = "pearson") # r = 0.74, p = 0.001**
+cor.test(FC_TEP_100_me$z_lDLPFC_0_5Hz, FC_TEP_100_me$range1_tms, method = "spearman") # rho = 0.75, p = 0.010*
+
+m <- lm(mean1_tms ~ z_lDLPFC_0_5Hz, data = FC_TEP_100_me)
+summary(m)
+m <- lm(range1_tms ~ z_lDLPFC_0_5Hz, data = FC_TEP_100_me)
+summary(m)
+
+
+p.mean1_me <- ggplot(FC_TEP_100_me, aes(z_lDLPFC_0_5Hz, mean1_tms))+
+  # annotate("text", x=-0.07, y = 8,label="r = -0.26, p = 0.251", size=6.5)+ # ori
+  geom_point(size = 3, alpha =.3) + 
+  geom_smooth(method = 'lm', size = 2, col = "green4", se = FALSE, alpha=.12)+
+  xlab("L DLPFC - Med AMY\nFC (Fisher Z)") + ylab("P70 Mean (SD), Med AMY")+ 
+  ylim(-4,6)+
+  theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.7))+
+  theme(axis.ticks=element_line(color="black",size=.7,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))
+p.mean1_me
+
+p.range1_me <- ggplot(FC_TEP_100_me, aes(z_lDLPFC_0_5Hz, range1_tms))+
+  # annotate("text", x=-0.07, y = 8,label="r = -0.26, p = 0.251", size=6.5)+ # ori
+  geom_point(size = 3, alpha =.3) + 
+  geom_smooth(method = 'lm', size = 2, col = "green4", se = FALSE, alpha=.12)+
+  xlab("L DLPFC - Med AMY\nFC (Fisher Z)") + ylab("P70 Range (SD), Med AMY")+ 
+  ylim(-1,12.5)+
+  theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.7))+
+  theme(axis.ticks=element_line(color="black",size=.7,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))
+p.range1_me
+
+summary(m.amy1)
+
+# p.amy1_mela_2 <- ggplot(FC_TEP_100[-c(10),], aes(z_lDLPFC_0_5Hz, tms_mean_100, col=Subregion, fill=Subregion))+
+# p.amy1_mela <- ggplot(FC_TEP_100, aes(z_lDLPFC_0_5Hz, tms_mean_100, col=Subregion, fill=Subregion))+
+#   annotate("text", x=-0.03, y = 8,label="r = 0.45, p = 0.161", size=6.5, col="green4")+
+#   annotate("text", x=-0.22, y = -3.5,label="r = -0.46, p = 0.174", size=6.5, col="maroon3")+
+#   # annotate("text", x=-0.2, y = -3,label="r = -0.62, p = 0.073", size=6.5, col="maroon3")+
+#   geom_point(size = 2, alpha =.3) + 
+#   geom_smooth(method = 'lm', size = 1.5, alpha=.12)+
+#   xlab("L DLPFC (TMS site) - AMY (electrode)\nFC (Fisher Z)") + ylab("iTEP 47~95ms mean amplitude (SD)")+ 
+#   ylim(-8,11)+
+#   # ggtitle("L posterior DLPFC - R AMY")+
+#   scale_color_manual(values=c("green4","maroon3"))+
+#   scale_fill_manual(values=c("green4","maroon3"))+
+#   theme_classic()+
+#   theme(axis.line=element_line(linetype=1,color="black",size=.7))+
+#   theme(axis.ticks=element_line(color="black",size=.7,lineend = 12))+
+#   theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+#   theme(axis.title = element_text(color = "black", size = 18))+
+#   theme(plot.title = element_text(color = "black", size = 18))+
+#   theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+#   theme(legend.position=c(0.18,0.12))+
+#   labs(fill="",col="")
+# p.amy1_mela
+# p.amy1_mela_2
+# summary(m.amy1_mela)
+```
+
+```{r 100 range medial}
+
+```
+
+
+```{r 200ms}
+# whole
+cor.test(FC_TEP_200$z_lDLPFC_0_5Hz, FC_TEP_200$mean2_tms, method = "pearson") # r = 0.434673, p = 0.04894*
+# if 150~250: r = 0.43, p = 0.049*
+cor.test(FC_TEP_200$z_lDLPFC_0_5Hz, FC_TEP_200$mean2_tms, method = "spearman") # rho = 0.3480519, p = 0.1225*
+# if 150~250: rho = 0.39, p = 0.085
+
+# medial
+cor.test(FC_TEP_200_me$z_lDLPFC_0_5Hz, FC_TEP_200_me$range2_tms, method = "pearson") # r = 0.6537492, p = 0.02913**
+cor.test(FC_TEP_200_me$z_lDLPFC_0_5Hz, FC_TEP_200_me$range2_tms, method = "spearman") # rho = 0.7545455, p = 0.01048*
+
+
+p.mean2 <- ggplot(FC_TEP_200, aes(z_lDLPFC_0_5Hz, mean2_tms))+
+  # annotate("text", x=-0.25, y = 5,label="r = 0.47, p = 0.031", size=6.5)+
+  geom_point(size = 3, alpha =.3) + 
+  geom_smooth(method = 'lm', size = 2, col = "dodgerblue3", se = FALSE, alpha=.12)+
+  xlab("L DLPFC - amyg\nrs-fc (Fisher Z)") + ylab("N200 mean amplitude (SD)")+ 
+  ylim(-8,6)+ 
+  xlim(-0.38,0.18)+
+  theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.7))+
+  theme(axis.ticks=element_line(color="black",size=.7,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))
+p.mean2
+
+p.range2_me <- ggplot(FC_TEP_200_me, aes(z_lDLPFC_0_5Hz,range2_tms))+
+  # annotate("text", x=-0.25, y = 5,label="r = 0.47, p = 0.031", size=6.5)+
+  geom_point(size = 3, alpha =.3) + 
+  geom_smooth(method = 'lm', size = 2, col = "green4", se = FALSE, alpha=.12)+
+  xlab("L DLPFC - Med AMY\nrs-fc (Fisher Z)") + ylab("N200 Range (SD), Med AMY")+ 
+  ylim(-2,20)+
+  # ggtitle("L posterior DLPFC - R AMY")+
+  theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.7))+
+  theme(axis.ticks=element_line(color="black",size=.7,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))
+p.range2_me
+
+# p.amy2_mela <- ggplot(FC_TEP_200, aes(z_lDLPFC_0_5Hz, tms_mean_200, col=Subregion, fill=Subregion))+
+#   annotate("text", x=-0.25, y =4,label="r = -0.12, p = 0.715", size=6.5, col="green4")+
+#   annotate("text", x=-0.05, y = -8,label="r = 0.72, p = 0.018*", size=6.5, col="maroon3")+
+#   geom_point(size = 2, alpha =.3) + 
+#   geom_smooth(method = 'lm', size = 1.5, alpha=.12)+
+#   xlab("L DLPFC (TMS site) - AMY (electrode)\nFC (Fisher Z)") + ylab("iTEP 196~253ms mean amplitude (SD)")+ 
+#   ylim(-11,8)+
+#   # ggtitle("L posterior DLPFC - R AMY")+
+#   scale_color_manual(values=c("green4","maroon3"))+
+#   scale_fill_manual(values=c("green4","maroon3"))+
+#   theme_classic()+
+#   theme(axis.line=element_line(linetype=1,color="black",size=.7))+
+#   theme(axis.ticks=element_line(color="black",size=.7,lineend = 12))+
+#   theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+#   theme(axis.title = element_text(color = "black", size = 18))+
+#   theme(plot.title = element_text(color = "black", size = 18))+
+#   theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+#   theme(legend.position="none")+
+#   labs(fill="",col="")
+# p.amy2_mela
+
+
+
+```
+
+```{r}
+figDir = "/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/1_Figures"
+setwd(figDir)
+filename <- "FC_TEP_amy_B.pdf"
+pdf(file = filename, height = 5, width = 4)
+p.mean1_me
+p.range1_me
+p.mean2
+p.range2_me
+dev.off()
+
+figDir = "/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/1_Figures"
+setwd(figDir)
+filename <- "FC_TEP_amy_B_n200_mean.pdf"
+pdf(file = filename, height = 5, width = 4)
+p.mean2
+dev.off()
+
+figDir = "/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/1_Figures"
+setwd(figDir)
+filename <- "FC_TMS_for_MS.pdf"
+pdf(file = filename, height = 6, width = 4.8)
+p.mean2
+p.CIT_gm_indiv_L_p_full_R
+dev.off()
+
+```
+
+
+
+
+
+# Right no sig
+
+```{r}
+# load(paste0(rootpath,"allPatients_iEEGdata_csv/iTEP_csv_L-DLPFC_amy/iTEP_L_DLPFC_2hp_detrend500.RData"))
+TEP_amy_avg_tvs_R <- TEP_amy_avg_tvs %>% filter(DKT == "Right-Amygdala")
+TEP_amy_avg_100_R <- TEP_amy_avg_tvs_R %>% mutate(diff = tms-sham) %>% 
+  filter(Time <= 91 & Time >= 55) %>% 
+  group_by(Channel,DKT,is_lateral) %>% 
+  summarise(
+    mean1_tms = mean(tms),
+    # sham_mean1 = mean(sham),
+    mean1_diff = mean(diff)
+  )
+TEP_amy_avg_100_R <- TEP_amy_avg_100_R %>% left_join(ptp1[c(2,3,5)])
+#200
+TEP_amy_avg_200_R <- TEP_amy_avg_tvs_R %>% mutate(diff = tms-sham) %>% 
+  filter(Time <= 209 & Time >= 193) %>% 
+  group_by(Channel,DKT,is_lateral) %>% 
+  summarise(
+    mean2_tms = mean(tms),
+    # sham_mean2 = mean(sham),
+    mean2_diff = mean(diff)
+  )
+TEP_amy_avg_200_R <- TEP_amy_avg_200_R %>% left_join(ptp2[c(2,3,5)])
+
+
+
+
+# Medial
+TEP_amy_avg_100_R_me <- TEP_amy_avg_tvs_R %>% mutate(diff = tms-sham) %>% 
+  filter(Time <= 112 & Time >= 57 & is_lateral == 0) %>% 
+  group_by(Channel,DKT,is_lateral) %>% 
+  summarise(
+    mean1_tms = mean(tms),
+    # sham_mean1 = mean(sham),
+    mean1_diff = mean(diff)
+  )
+TEP_amy_avg_100_R_me <- TEP_amy_avg_100_R_me %>% left_join(ptp1_me[c(2,3,5)])
+
+TEP_amy_avg_200_R_me <- TEP_amy_avg_tvs_R %>% mutate(diff = tms-sham) %>% 
+  filter(Time <= 216 & Time >= 195 & is_lateral == 0) %>% 
+  group_by(Channel,DKT,is_lateral) %>% 
+  summarise(
+    mean2_tms = mean(tms),
+    # sham_mean2 = mean(sham),
+    mean2_diff = mean(diff)
+  )
+TEP_amy_avg_200_R_me <- TEP_amy_avg_200_R_me %>% left_join(ptp2_me[c(2,3,5)])
+
+# lateral
+TEP_amy_avg_100_R_la <- TEP_amy_avg_tvs_R %>% mutate(diff = tms-sham) %>% 
+  filter(Time <= 91 & Time >= 55 & is_lateral == 1) %>% 
+  group_by(Channel,DKT,is_lateral) %>% 
+  summarise(
+    mean1_tms = mean(tms),
+    # sham_mean1 = mean(sham),
+    mean1_diff = mean(diff)
+  )
+TEP_amy_avg_100_R_la <- TEP_amy_avg_100_R_la %>% left_join(ptp1_la[c(1,2,4)])
+
+TEP_amy_avg_200_R_la <- TEP_amy_avg_tvs_R %>% mutate(diff = tms-sham) %>% 
+  filter(Time <= 209 & Time >= 193 & is_lateral == 1) %>% 
+  group_by(Channel,DKT,is_lateral) %>% 
+  summarise(
+    mean2_tms = mean(tms),
+    # sham_mean2 = mean(sham),
+    mean2_diff = mean(diff)
+  )
+TEP_amy_avg_200_R_la <- TEP_amy_avg_200_R_la %>% left_join(ptp2_la[c(1,2,4)])
+```
+
+
+
+```{r FC ~ TEP}
+# 100ms
+FC_TEP_100_R <- left_join(FC, TEP_amy_avg_100_R)
+shapiro.test(FC_TEP_100_R$z_lDLPFC_0_5Hz)
+shapiro.test(FC_TEP_100_R$mean1_tms)
+shapiro.test(FC_TEP_100_R$range1_tms)
+correlation <- corr.test(FC_TEP_100_R[,c(5,8:11)], method="spearman",adjust="fdr") 
+correlation <- corr.test(FC_TEP_100_R[,c(5,8:11)], method="pearson",adjust="fdr") 
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  # labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Pearson's r. corr_FIRST_gm_indiv_L_a_DLPFC")
+
+#200ms
+FC_TEP_200_R <- left_join(FC, TEP_amy_avg_200_R)
+shapiro.test(FC_TEP_200_R$z_lDLPFC_0_5Hz)
+shapiro.test(FC_TEP_200_R$mean2_tms)
+shapiro.test(FC_TEP_200_R$range2_tms)
+correlation <- corr.test(FC_TEP_200_R[,c(5,8:11)], method="spearman",adjust="fdr") # sig
+correlation <- corr.test(FC_TEP_200_R[,c(5,8:11)], method="pearson",adjust="fdr")
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  # labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Pearson's r. corr_FIRST_gm_indiv_L_a_DLPFC")
+
+
+# Medial
+# 100
+FC_TEP_100_R_me <- left_join(FC, TEP_amy_avg_100_R_me) %>% filter(is_lateral == 0)
+shapiro.test(FC_TEP_100_R_me$z_lDLPFC_0_5Hz)
+shapiro.test(FC_TEP_100_R_me$mean1_tms)
+shapiro.test(FC_TEP_100_R_me$range1_tms)
+correlation <- corr.test(FC_TEP_100_R_me[,c(5,8:11)], method="spearman",adjust="fdr") # sig
+correlation <- corr.test(FC_TEP_100_R_me[,c(5,8:11)], method="pearson",adjust="fdr")
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  # labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Pearson's r. corr_FIRST_gm_indiv_L_a_DLPFC")
+
+#200ms
+FC_TEP_200_R_me <- left_join(FC, TEP_amy_avg_200_R_me) %>% filter(is_lateral == 0)
+shapiro.test(FC_TEP_200_R_me$z_lDLPFC_0_5Hz)
+shapiro.test(FC_TEP_200_R_me$mean2_tms)
+shapiro.test(FC_TEP_200_R_me$range2_tms)
+correlation <- corr.test(FC_TEP_200_R_me[,c(5,8:11)], method="spearman",adjust="fdr") # sig
+correlation <- corr.test(FC_TEP_200_R_me[,c(5,8:11)], method="pearson",adjust="fdr")
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  # labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Pearson's r. corr_FIRST_gm_indiv_L_a_DLPFC")
+
+# lateral
+# 100
+FC_TEP_100_R_la <- left_join(FC, TEP_amy_avg_100_R_la) %>% filter(is_lateral == 1)
+correlation <- corr.test(FC_TEP_100_R_la[,c(5,8:11)], method="spearman",adjust="fdr") # sig
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  # labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Pearson's r. corr_FIRST_gm_indiv_L_a_DLPFC")
+
+#200ms
+FC_TEP_200_R_la <- left_join(FC, TEP_amy_avg_200_R_la) %>% filter(is_lateral == 1)
+correlation <- corr.test(FC_TEP_200_R_la[,c(5,8:11)], method="spearman",adjust="fdr") # sig
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  # labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Pearson's r. corr_FIRST_gm_indiv_L_a_DLPFC")
+
+```
+
+
+
+
+
+
+

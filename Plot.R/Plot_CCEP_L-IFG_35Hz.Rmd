@@ -1,0 +1,254 @@
+---
+title: "Plot CCEP L VLPFC amy 35Hz"
+author: "Xianqing Liu"
+date: "5/11/2023"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(readr)
+library(patchwork)
+library(ggsignif)
+library(psych) # load correlation
+library(RColorBrewer)#color
+setwd("C:/Users/xjl19/Desktop/TMS-iEEG/es-TT_Processed")
+# load("C:/Users/xjl19/Desktop/TMS-iEEG/Stanford_Processed/TEP/iTEP_all.RData")
+figDir = "/Users/xianqing/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/1_Figures"
+setwd(figDir)
+```
+
+```{r}
+normwave_amy <- CCEP_amy_avg %>% group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(17))
+normwave_amy_me <- filter(CCEP_amy_avg, is_lateral == 0) %>% group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(6))
+normwave_amy_la <- filter(CCEP_amy_avg, is_lateral == 1) %>% group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(11))
+normwave_amy_L <- filter(CCEP_amy_avg, DKT == "Left-Amygdala") %>% group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(14))
+normwave_amy_R <- filter(CCEP_amy_avg, DKT == "Right-Amygdala") %>% group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(3))
+
+normwave_amy_me_L <- 
+  filter(CCEP_amy_avg, is_lateral == 0 & DKT == "Left-Amygdala") %>% 
+  group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(5))
+normwave_amy_me_R <- 
+  filter(CCEP_amy_avg, is_lateral == 0 & DKT == "Right-Amygdala") %>% 
+  group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = 0)
+normwave_amy_la_L <- 
+  filter(CCEP_amy_avg, is_lateral == 1 & DKT == "Left-Amygdala") %>% 
+  group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(9))
+normwave_amy_la_R <- 
+  filter(CCEP_amy_avg, is_lateral == 1 & DKT == "Right-Amygdala") %>% 
+  group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = 0)
+```
+
+```{r for multi-sessions ifg stim}
+normwave_amy <- CCEP_amy_avg %>% group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(47))
+normwave_amy_me <- filter(CCEP_amy_avg, is_lateral == 0) %>% group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(18))
+normwave_amy_la <- filter(CCEP_amy_avg, is_lateral == 1) %>% group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(29))
+normwave_amy_L <- filter(CCEP_amy_avg, DKT == "Left-Amygdala") %>% group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(39))
+normwave_amy_R <- filter(CCEP_amy_avg, DKT == "Right-Amygdala") %>% group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(8))
+
+normwave_amy_me_L <- 
+  filter(CCEP_amy_avg, is_lateral == 0 & DKT == "Left-Amygdala") %>% 
+  group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(15))
+normwave_amy_me_R <- 
+  filter(CCEP_amy_avg, is_lateral == 0 & DKT == "Right-Amygdala") %>% 
+  group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(3))
+normwave_amy_la_L <- 
+  filter(CCEP_amy_avg, is_lateral == 1 & DKT == "Left-Amygdala") %>% 
+  group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(24))
+normwave_amy_la_R <- 
+  filter(CCEP_amy_avg, is_lateral == 1 & DKT == "Right-Amygdala") %>% 
+  group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(5))
+```
+
+
+```{r}
+normwave_amy <- normwave_amy %>% mutate(subdivision = "Whole") 
+normwave_amy <- normwave_amy %>% left_join(stats_amy_sig[c(3,4,6)])
+normwave_amy[c(5,6)] <- normwave_amy[c(5,6)]*15.3
+
+normwave_amy_me <- normwave_amy_me %>% mutate(subdivision = "Medial")
+normwave_amy_me <- normwave_amy_me %>% left_join(stats_amy_me_sig[c(3,4,6)])
+normwave_amy_me[c(5,6)] <- normwave_amy_me[c(5,6)]*14.4
+
+normwave_amy_la <- normwave_amy_la %>% mutate(subdivision = "Lateral")
+normwave_amy_la <- normwave_amy_la %>% left_join(stats_amy_la_sig[c(3,4,6)])
+normwave_amy_la[c(5,6)] <- normwave_amy_la[c(5,6)]*13.5
+
+normwave_bi <- rbind(normwave_amy, normwave_amy_me, normwave_amy_la)
+normwave_bi$subdivision <- 
+  factor(normwave_bi$subdivision, levels=c("Lateral","Medial","Whole"))
+normwave_bi$sig[normwave_bi$sig == 0] <- NA
+normwave_bi$is_sig[normwave_bi$is_sig == 0] <- NA
+
+
+
+p.norm_bi <- normwave_bi %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, size = .4, col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = subdivision), alpha = .2)+
+  geom_line(aes(col = subdivision),size=1.2)+
+  geom_line(aes(Time, sig, col = subdivision), size = 2.7, alpha = .5)+
+  geom_line(aes(Time, is_sig, col = subdivision), size = 2.7)+
+  # lateral = 0
+  # medial = 0
+  # whole
+  annotate("rect", xmin=-8, xmax=8, ymin=-5, ymax=5, fill="gray")+
+  scale_color_manual(values=c("maroon3","green4","dodgerblue3"))+
+  scale_fill_manual(values=c("maroon3","green4","dodgerblue3"))+
+  
+  scale_y_continuous(limits=c(-13,15.4), breaks = c(-10,-5,0,5,10,15))+
+  scale_x_continuous(limits=c(-100,500), breaks = c(-100,0,100,200,300,400,500))+
+  
+  # scale_y_continuous(limits=c(-15,15.4), breaks = c(-15,-10,-5,0,5,10,15))+
+  # scale_x_continuous(limits=c(-200,500), breaks = c(-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+ylab("Amplitude (SD)")+ 
+  ggtitle(" Bilateral AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.6))+
+  theme(axis.ticks=element_line(color="black",size=.6,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.position="none")+labs(fill="",col="")
+  # theme(legend.text = element_text(color = "black", size = rel(1.5)),
+  #       legend.position=c(0.18,0.2))+labs(fill="",col="")
+p.norm_bi
+```
+
+
+```{r}
+normwave_amy_L <- normwave_amy_L %>% mutate(subdivision = "Whole")
+normwave_amy_me_L <- normwave_amy_me_L %>% mutate(subdivision = "Medial")
+normwave_amy_la_L <- normwave_amy_la_L %>% mutate(subdivision = "Lateral")
+normwave_L <- rbind(normwave_amy_L, normwave_amy_me_L, normwave_amy_la_L)
+normwave_L$subdivision <- 
+  factor(normwave_L$subdivision, levels=c("Lateral","Medial","Whole"))
+
+normwave_amy_L <- normwave_amy_L %>% mutate(subdivision = "Whole") 
+normwave_amy_L <- normwave_amy_L %>% left_join(stats_amy_L_sig[c(3,4,6)])
+normwave_amy_L[c(5,6)] <- normwave_amy_L[c(5,6)]*15.3
+
+normwave_amy_me_L <- normwave_amy_me_L %>% mutate(subdivision = "Medial")
+normwave_amy_me_L <- normwave_amy_me_L %>% left_join(stats_amy_L_me_sig[c(3,4,6)])
+normwave_amy_me_L[c(5,6)] <- normwave_amy_me_L[c(5,6)]*14.4
+
+normwave_amy_la_L <- normwave_amy_la_L %>% mutate(subdivision = "Lateral")
+normwave_amy_la_L <- normwave_amy_la_L %>% left_join(stats_amy_L_la_sig[c(3,4,6)])
+normwave_amy_la_L[c(5,6)] <- normwave_amy_la_L[c(5,6)]*13.5
+
+normwave_L <- rbind(normwave_amy_L, normwave_amy_me_L, normwave_amy_la_L)
+normwave_L$subdivision <- 
+  factor(normwave_L$subdivision, levels=c("Lateral","Medial","Whole"))
+normwave_L$sig[normwave_L$sig == 0] <- NA
+normwave_L$is_sig[normwave_L$is_sig == 0] <- NA
+
+p.norm_L <- normwave_L %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, size = .4, col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = subdivision), alpha = .2)+
+  geom_line(aes(col = subdivision),size=1.2)+
+  geom_line(aes(Time, sig, col = subdivision), size = 2.7, alpha = .5)+
+  geom_line(aes(Time, is_sig, col = subdivision), size = 2.7)+
+  # lateral
+  # medial = 0
+  # whole
+  annotate("rect", xmin=-8, xmax=8, ymin=-5, ymax=5, fill="gray")+
+  scale_color_manual(values=c("maroon3","green4","dodgerblue3"))+
+  scale_fill_manual(values=c("maroon3","green4","dodgerblue3"))+
+  scale_y_continuous(limits=c(-13,15.4), breaks = c(-10,-5,0,5,10,15))+
+  scale_x_continuous(limits=c(-100,500), breaks = c(-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+ylab("Amplitude (SD)")+ 
+  ggtitle(" Left AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.6))+
+  theme(axis.ticks=element_line(color="black",size=.6,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.position="none")+labs(fill="",col="")
+p.norm_L
+```
+
+```{r}
+normwave_amy_R <- normwave_amy_R %>% mutate(subdivision = "Whole")
+normwave_amy_me_R <- normwave_amy_me_R %>% mutate(subdivision = "Medial")
+normwave_amy_la_R <- normwave_amy_la_R %>% mutate(subdivision = "Lateral")
+normwave_R <- rbind(normwave_amy_R, normwave_amy_me_R, normwave_amy_la_R)
+normwave_R$subdivision <- 
+  factor(normwave_R$subdivision, levels=c("Lateral","Medial","Whole"))
+
+normwave_amy_R <- normwave_amy_R %>% mutate(subdivision = "Whole") 
+normwave_amy_R <- normwave_amy_R %>% left_join(stats_amy_R_sig[c(3,4,6)])
+normwave_amy_R[c(5,6)] <- normwave_amy_R[c(5,6)]*15.3
+
+normwave_amy_me_R <- normwave_amy_me_R %>% mutate(subdivision = "Medial")
+normwave_amy_me_R <- normwave_amy_me_R %>% left_join(stats_amy_R_me_sig[c(3,4,6)])
+normwave_amy_me_R[c(5,6)] <- normwave_amy_me_R[c(5,6)]*14.4
+
+normwave_amy_la_R <- normwave_amy_la_R %>% mutate(subdivision = "Lateral")
+normwave_amy_la_R <- normwave_amy_la_R %>% left_join(stats_amy_R_la_sig[c(3,4,6)])
+normwave_amy_la_R[c(5,6)] <- normwave_amy_la_R[c(5,6)]*13.5
+
+normwave_R <- rbind(normwave_amy_R, normwave_amy_me_R, normwave_amy_la_R)
+normwave_R$subdivision <- 
+  factor(normwave_R$subdivision, levels=c("Lateral","Medial","Whole"))
+normwave_R$sig[normwave_R$sig == 0] <- NA
+normwave_R$is_sig[normwave_R$is_sig == 0] <- NA
+
+p.norm_R <- normwave_R %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, size = .4, col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = subdivision), alpha = .2)+
+  geom_line(aes(col = subdivision),size=1.2)+
+  geom_line(aes(Time, sig, col = subdivision), size = 2.7, alpha = .5)+
+  geom_line(aes(Time, is_sig, col = subdivision), size = 2.7)+
+  # lateral
+  # medial = 0
+  # whole
+  annotate("rect", xmin=-8, xmax=8, ymin=-5, ymax=5, fill="gray")+
+  scale_color_manual(values=c("maroon3","green4","dodgerblue3"))+
+  scale_fill_manual(values=c("maroon3","green4","dodgerblue3"))+
+  scale_y_continuous(limits=c(-13,15.4), breaks = c(-10,-5,0,5,10,15))+
+  scale_x_continuous(limits=c(-100,500), breaks = c(-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+ylab("Amplitude (SD)")+ 
+  ggtitle(" Right AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.6))+
+  theme(axis.ticks=element_line(color="black",size=.6,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.position="none")+labs(fill="",col="")
+p.norm_R
+```
+
+
+```{r}
+figDir = "/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/1_Figures"
+setwd(figDir)
+filename <- "CCEP_L-DLPFC_AMY_sessions.pdf"
+pdf(file = filename, height = 4.6, width = 5.5)
+p.norm_bi
+p.norm_L
+p.norm_R
+dev.off()
+```
+
+

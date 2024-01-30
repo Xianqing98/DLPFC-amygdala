@@ -1,0 +1,464 @@
+---
+title: "fMRIresponseAMY"
+author: "Xianqing"
+date: "11/5/2023"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(readxl)
+library(stringr)
+library(lme4)
+library(lmerTest)
+library(readr)
+library(patchwork)
+library(ggsignif)
+library(psych) # load correlation
+library(RColorBrewer)#color
+library(car)
+library(ez)
+rootpath <- "/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/Documents - JingJiang Lab/JiangLab/4_Projects/2_DLPFC_AMY_Bella/3_TMS_fMRI"
+setwd(rootpath)
+```
+
+
+## TMS-fMRI zmap (from Jing)
+
+```{r}
+# rootpath <- "/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/2_TMS_fMRI_Xin/TMS_fMRI_xl"
+# setwd(rootpath)
+TMSfMRI_CIT_gm_Fp_L <- read_excel(paste0(rootpath, "/tms/CIT_HC_comp_zmap_gm.3.xlsx"), sheet = "L_Fp") %>% mutate(TMS_site = "L Fp", n = 65)
+TMSfMRI_CIT_gm_Fp_R <- read_excel(paste0(rootpath, "/tms/CIT_HC_comp_zmap_gm.3.xlsx"), sheet = "R_Fp") %>% mutate(TMS_site = "R Fp", n = 69)
+TMSfMRI_CIT_gm_DLPFC_La <- read_excel(paste0(rootpath, "/tms/CIT_HC_comp_zmap_gm.3.xlsx"), sheet = "L_aMFG") %>% mutate(TMS_site = "L aDLPFC", n = 77)
+TMSfMRI_CIT_gm_DLPFC_Lp <- read_excel(paste0(rootpath, "/tms/CIT_HC_comp_zmap_gm.3.xlsx"), sheet = "L_pMFG") %>% mutate(TMS_site = "L pDLPFC", n = 80)
+TMSfMRI_CIT_gm_DLPFC_Ra <- read_excel(paste0(rootpath, "/tms/CIT_HC_comp_zmap_gm.3.xlsx"), sheet = "R_aMFG") %>% mutate(TMS_site = "R aDLPFC", n = 80)
+TMSfMRI_CIT_gm_DLPFC_Rp <- read_excel(paste0(rootpath, "/tms/CIT_HC_comp_zmap_gm.3.xlsx"), sheet = "R_pMFG") %>% mutate(TMS_site = "R pDLPFC", n = 79)
+TMSfMRI_CIT_gm_IFJ <- read_excel(paste0(rootpath, "/tms/CIT_HC_comp_zmap_gm.3.xlsx"), sheet = "R_IFJ") %>% mutate(TMS_site = "R IFJ", n = 76)
+TMSfMRI_CIT_gm_FEF <- read_excel(paste0(rootpath, "/tms/CIT_HC_comp_zmap_gm.3.xlsx"), sheet = "R_FEF") %>% mutate(TMS_site = "R FEF", n = 78)
+TMSfMRI_CIT_gm_preSMA <- read_excel(paste0(rootpath, "/tms/CIT_HC_comp_zmap_gm.3.xlsx"), sheet = "R_preSMA") %>% mutate(TMS_site = "R preSMA", n = 64)
+TMSfMRI_CIT_gm_IPL <- read_excel(paste0(rootpath, "/tms/CIT_HC_comp_zmap_gm.3.xlsx"), sheet = "R_IPL") %>% mutate(TMS_site = "R IPL", n = 51)
+TMSfMRI_CIT_gm_M1 <- read_excel(paste0(rootpath, "/tms/CIT_HC_comp_zmap_gm.3.xlsx"), sheet = "R_M1") %>% mutate(TMS_site = "R M1", n = 79)
+
+# TMSfMRI_Anat2_L_a_gm <- read_excel(paste0(rootpath, "/tms/Anat2_HC_comp_zmap_gm.3.xlsx"), sheet = "L_aMFG")
+# TMSfMRI_Anat2_L_p_gm <- read_excel(paste0(rootpath, "/tms/Anat2_HC_comp_zmap_gm.3.xlsx"), sheet = "L_pMFG")
+# TMSfMRI_FIRST_L_a_gm <- read_excel(paste0(rootpath, "/tms/FIRST_small_HC_comp_zmap_gm.3.xlsx"), sheet = "L_aMFG")[c(1:4)]
+# TMSfMRI_FIRST_L_p_gm <- read_excel(paste0(rootpath, "/tms/FIRST_small_HC_comp_zmap_gm.3.xlsx"), sheet = "L_pMFG")[c(1:4)]
+
+TMSfMRI_CIT_gm <- rbind(TMSfMRI_CIT_gm_Fp_L, TMSfMRI_CIT_gm_Fp_R, 
+                        TMSfMRI_CIT_gm_DLPFC_La, TMSfMRI_CIT_gm_DLPFC_Lp, 
+                        TMSfMRI_CIT_gm_DLPFC_Ra, TMSfMRI_CIT_gm_DLPFC_Rp,
+                        TMSfMRI_CIT_gm_IFJ, TMSfMRI_CIT_gm_FEF,
+                        TMSfMRI_CIT_gm_preSMA, TMSfMRI_CIT_gm_IPL,
+                        TMSfMRI_CIT_gm_M1)
+TMSfMRI_CIT_gm <- TMSfMRI_CIT_gm %>% pivot_longer(cols = matches(".*-.*"), names_to = "Subregion", values_to = "Response")
+TMSfMRI_CIT_gm$TMS_site <- factor(TMSfMRI_CIT_gm$TMS_site, levels = c(
+  "L Fp", "R Fp", "L aDLPFC", "L pDLPFC", "R aDLPFC", "R pDLPFC", "R IFJ", "R FEF", "R preSMA", "R IPL", "R M1"
+))
+
+```
+
+
+
+```{r Left and Right only}
+TMSfMRI_CIT_gm_LR <- TMSfMRI_CIT_gm %>% filter(Subregion == "full-L" | Subregion == "full-R")
+summary(TMSfMRI_CIT_gm_LR)
+
+rm_anova <- aov(Response ~ TMS_site * Subregion, data = TMSfMRI_CIT_gm_LR)
+summary(rm_anova)
+
+qqnorm(residuals(rm_anova))
+qqline(residuals(rm_anova))
+shapiro.test(residuals(rm_anova))
+
+mean_responses_LR <- TMSfMRI_CIT_gm_LR %>% 
+  group_by(TMS_site, Subregion) %>% 
+  summarise(mean = mean(Response),
+            sd = sd(Response),
+            n = mean(n)) %>% 
+  mutate(se = sd/sqrt(n))
+
+p.LR <- mean_responses_LR %>% 
+  ggplot(aes(x=TMS_site, y=mean, fill = Subregion))+
+  # geom_bar(col = "black", size = 1, width = 0.5, position = position_dodge(width = 0.7))+
+  stat_summary(col = "black", geom = "bar",size = 1, width = .5, , position = position_dodge(width = 0.65))+
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=0.1, color='black', 
+                position = position_dodge(width = 0.65), size=1)+
+  geom_hline(yintercept=0, size = .4, linetype = "dashed")+
+  # geom_boxplot(col = "black", size = 1, outlier.alpha = 1, width = 0.5, position = position_dodge(width = 0.7))+
+  # geom_signif(y_position=12, xmin=c(0.8), xmax=c(1.2), annotation=c("*"),
+  #             tip_length=0, size=1, textsize = 8, vjust = 0.3)+
+  # geom_signif(y_position=14, xmin=c(1.8), xmax=c(2.2), annotation=c("*"),
+  #             tip_length=0, size=1, textsize = 8, vjust = 0.3)+
+  # geom_signif(y_position=10, xmin=c(2.8), xmax=c(3.2), annotation=c("n.s."),
+  #             tip_length=0, size=1, textsize = 6, vjust = -0.3)+
+  scale_fill_manual(values=c("dodgerblue3","skyblue"), labels = c("Left", "Right"))+
+  ylim(-0.5,0.18)+
+  ylab("Amygdala Response (z)")+xlab(NULL)+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.6))+
+  theme(axis.ticks=element_line(color="black",size=.6,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  theme(legend.position=c(0.07,0.95))+labs(fill="",col="")
+p.LR
+```
+
+
+```{r Med and Lat only}
+TMSfMRI_CIT_gm_MeLa <- TMSfMRI_CIT_gm %>% filter(Subregion == "med-B" | Subregion == "lat-B")
+summary(TMSfMRI_CIT_gm_MeLa)
+
+rm_anova <- aov(Response ~ TMS_site * Subregion, data = TMSfMRI_CIT_gm_MeLa)
+summary(rm_anova)
+
+qqnorm(residuals(rm_anova))
+qqline(residuals(rm_anova))
+shapiro.test(residuals(rm_anova))
+
+mean_responses_MeLa <- TMSfMRI_CIT_gm_MeLa %>% 
+  group_by(TMS_site, Subregion) %>% 
+  summarise(mean = mean(Response),
+            sd = sd(Response),
+            n = mean(n)) %>% 
+  mutate(se = sd/sqrt(n))
+
+p.mela <- mean_responses_MeLa %>% 
+  ggplot(aes(x=TMS_site, y=mean, fill = Subregion))+
+  # geom_bar(col = "black", size = 1, width = 0.5, position = position_dodge(width = 0.7))+
+  stat_summary(col = "black", geom = "bar",size = 1, width = .5, , position = position_dodge(width = 0.65))+
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=0.1, color='black', 
+                position = position_dodge(width = 0.65), size=1)+
+  geom_hline(yintercept=0, size = .4, linetype = "dashed")+
+  # geom_boxplot(col = "black", size = 1, outlier.alpha = 1, width = 0.5, position = position_dodge(width = 0.7))+
+  # geom_signif(y_position=12, xmin=c(0.8), xmax=c(1.2), annotation=c("*"),
+  #             tip_length=0, size=1, textsize = 8, vjust = 0.3)+
+  # geom_signif(y_position=14, xmin=c(1.8), xmax=c(2.2), annotation=c("*"),
+  #             tip_length=0, size=1, textsize = 8, vjust = 0.3)+
+  # geom_signif(y_position=10, xmin=c(2.8), xmax=c(3.2), annotation=c("n.s."),
+  #             tip_length=0, size=1, textsize = 6, vjust = -0.3)+
+  scale_fill_manual(values=c("maroon3","green4"), labels = c("Lateral", "Medial"))+
+  ylim(-0.58,0.18)+
+  ylab("Amygdala Response (z)")+xlab(NULL)+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.6))+
+  theme(axis.ticks=element_line(color="black",size=.6,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  theme(legend.position=c(0.07,0.95))+labs(fill="",col="")
+p.mela
+```
+
+
+
+
+```{r Left Med and Lat only}
+TMSfMRI_CIT_gm_MeLa_L <- TMSfMRI_CIT_gm %>% filter(Subregion == "med-L" | Subregion == "lat-L")
+summary(TMSfMRI_CIT_gm_MeLa_L)
+
+rm_anova <- aov(Response ~ TMS_site * Subregion, data = TMSfMRI_CIT_gm_MeLa_L)
+summary(rm_anova)
+
+qqnorm(residuals(rm_anova))
+qqline(residuals(rm_anova))
+shapiro.test(residuals(rm_anova))
+
+mean_responses_MeLa_L <- TMSfMRI_CIT_gm_MeLa_L %>% 
+  group_by(TMS_site, Subregion) %>% 
+  summarise(mean = mean(Response),
+            sd = sd(Response),
+            n = mean(n)) %>% 
+  mutate(se = sd/sqrt(n))
+
+p.mela_L <- mean_responses_MeLa_L %>% 
+  ggplot(aes(x=TMS_site, y=mean, fill = Subregion))+
+  # geom_bar(col = "black", size = 1, width = 0.5, position = position_dodge(width = 0.7))+
+  stat_summary(col = "black", geom = "bar",size = 1, width = .5, , position = position_dodge(width = 0.65))+
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=0.1, color='black', 
+                position = position_dodge(width = 0.65), size=1)+
+  geom_hline(yintercept=0, size = .4, linetype = "dashed")+
+  # geom_boxplot(col = "black", size = 1, outlier.alpha = 1, width = 0.5, position = position_dodge(width = 0.7))+
+  # geom_signif(y_position=12, xmin=c(0.8), xmax=c(1.2), annotation=c("*"),
+  #             tip_length=0, size=1, textsize = 8, vjust = 0.3)+
+  # geom_signif(y_position=14, xmin=c(1.8), xmax=c(2.2), annotation=c("*"),
+  #             tip_length=0, size=1, textsize = 8, vjust = 0.3)+
+  # geom_signif(y_position=10, xmin=c(2.8), xmax=c(3.2), annotation=c("n.s."),
+  #             tip_length=0, size=1, textsize = 6, vjust = -0.3)+
+  scale_fill_manual(values=c("maroon3","green4"), labels = c("Lateral", "Medial"))+
+  ylim(-0.58,0.18)+
+  ylab("Amygdala Response (z)")+xlab(NULL)+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.6))+
+  theme(axis.ticks=element_line(color="black",size=.6,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  theme(legend.position=c(0.07,0.95))+labs(fill="",col="")
+p.mela_L
+```
+
+
+```{r Right Med and Lat only}
+TMSfMRI_CIT_gm_MeLa_R <- TMSfMRI_CIT_gm %>% filter(Subregion == "med-R" | Subregion == "lat-R")
+summary(TMSfMRI_CIT_gm_MeLa_R)
+
+rm_anova <- aov(Response ~ TMS_site * Subregion, data = TMSfMRI_CIT_gm_MeLa_R)
+summary(rm_anova)
+
+qqnorm(residuals(rm_anova))
+qqline(residuals(rm_anova))
+shapiro.test(residuals(rm_anova))
+
+mean_responses_MeLa_R <- TMSfMRI_CIT_gm_MeLa_R %>% 
+  group_by(TMS_site, Subregion) %>% 
+  summarise(mean = mean(Response),
+            sd = sd(Response),
+            n = mean(n)) %>% 
+  mutate(se = sd/sqrt(n))
+
+p.mela_R <- mean_responses_MeLa_R %>% 
+  ggplot(aes(x=TMS_site, y=mean, fill = Subregion))+
+  # geom_bar(col = "black", size = 1, width = 0.5, position = position_dodge(width = 0.7))+
+  stat_summary(col = "black", geom = "bar",size = 1, width = .5, , position = position_dodge(width = 0.65))+
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=0.1, color='black', 
+                position = position_dodge(width = 0.65), size=1)+
+  geom_hline(yintercept=0, size = .4, linetype = "dashed")+
+  # geom_boxplot(col = "black", size = 1, outlier.alpha = 1, width = 0.5, position = position_dodge(width = 0.7))+
+  # geom_signif(y_position=12, xmin=c(0.8), xmax=c(1.2), annotation=c("*"),
+  #             tip_length=0, size=1, textsize = 8, vjust = 0.3)+
+  # geom_signif(y_position=14, xmin=c(1.8), xmax=c(2.2), annotation=c("*"),
+  #             tip_length=0, size=1, textsize = 8, vjust = 0.3)+
+  # geom_signif(y_position=10, xmin=c(2.8), xmax=c(3.2), annotation=c("n.s."),
+  #             tip_length=0, size=1, textsize = 6, vjust = -0.3)+
+  scale_fill_manual(values=c("maroon3","green4"), labels = c("Lateral", "Medial"))+
+  ylim(-0.58,0.18)+
+  ylab("Amygdala Response (z)")+xlab(NULL)+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.6))+
+  theme(axis.ticks=element_line(color="black",size=.6,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  theme(legend.position=c(0.07,0.95))+labs(fill="",col="")
+p.mela_R
+```
+
+
+
+```{r}
+figDir = "/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/1_Figures"
+setwd(figDir)
+filename <- "TMS_fMRI_response.pdf"
+pdf(file = filename, height = 5, width = 10)
+p.LR
+p.mela
+p.mela_L
+p.mela_R
+dev.off()
+
+```
+
+```{r Left and Right only}
+TMSfMRI_CIT_gm_whole <- TMSfMRI_CIT_gm %>% filter(Subregion == "full-B")
+summary(TMSfMRI_CIT_gm_whole)
+
+rm_anova <- aov(Response ~ TMS_site, data = TMSfMRI_CIT_gm_whole)
+
+summary(rm_anova)
+
+qqnorm(residuals(rm_anova))
+qqline(residuals(rm_anova))
+shapiro.test(residuals(rm_anova))
+
+mean_responses_whole <- TMSfMRI_CIT_gm_whole %>% 
+  group_by(TMS_site, Subregion) %>% 
+  summarise(mean = mean(Response),
+            sd = sd(Response),
+            n = mean(n)) %>% 
+  mutate(se = sd/sqrt(n))
+
+p.whole <- mean_responses_whole %>% 
+  ggplot(aes(x=TMS_site, y=mean, fill = "dodgerblue2"))+
+  # geom_bar(col = "black", size = 1, width = 0.5, position = position_dodge(width = 0.7))+
+  stat_summary(col = "black", geom = "bar",size = 1, width = .5)+
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=0.1, color='black', 
+                position = position_dodge(width = 0.65), size=1)+
+  geom_hline(yintercept=0, size = .4, linetype = "dashed")+
+  # geom_boxplot(col = "black", size = 1, outlier.alpha = 1, width = 0.5, position = position_dodge(width = 0.7))+
+  # geom_signif(y_position=12, xmin=c(0.8), xmax=c(1.2), annotation=c("*"),
+  #             tip_length=0, size=1, textsize = 8, vjust = 0.3)+
+  # geom_signif(y_position=14, xmin=c(1.8), xmax=c(2.2), annotation=c("*"),
+  #             tip_length=0, size=1, textsize = 8, vjust = 0.3)+
+  # geom_signif(y_position=10, xmin=c(2.8), xmax=c(3.2), annotation=c("n.s."),
+  #             tip_length=0, size=1, textsize = 6, vjust = -0.3)+
+  ylim(-0.5,0.18)+
+  ylab("Amygdala Response (z)")+xlab(NULL)+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.6))+
+  theme(axis.ticks=element_line(color="black",size=.6,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  theme(legend.position=c(0.07,0.95))+labs(fill="",col="")
+p.whole
+```
+
+
+
+## TMS-fMRI beta (from Jing)
+
+```{r}
+# rootpath <- "/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/2_TMS_fMRI_Xin/TMS_fMRI_xl"
+# setwd(rootpath)
+TMSfMRI_FIRST_beta_Fp_L <- read_excel(paste0(rootpath, "/tms/FIRST_small_HC_comp.xlsx"), sheet = "L_Fp") %>% mutate(TMS_site = "L Fp", n = 65)
+TMSfMRI_FIRST_beta_Fp_R <- read_excel(paste0(rootpath, "/tms/FIRST_small_HC_comp.xlsx"), sheet = "R_Fp") %>% mutate(TMS_site = "R Fp", n = 69)
+TMSfMRI_FIRST_beta_DLPFC_La <- read_excel(paste0(rootpath, "/tms/FIRST_small_HC_comp.xlsx"), sheet = "L_aMFG") %>% mutate(TMS_site = "L aDLPFC", n = 77)
+TMSfMRI_FIRST_beta_DLPFC_Lp <- read_excel(paste0(rootpath, "/tms/FIRST_small_HC_comp.xlsx"), sheet = "L_pMFG") %>% mutate(TMS_site = "L pDLPFC", n = 80)
+TMSfMRI_FIRST_beta_DLPFC_Ra <- read_excel(paste0(rootpath, "/tms/FIRST_small_HC_comp.xlsx"), sheet = "R_aMFG") %>% mutate(TMS_site = "R aDLPFC", n = 80)
+TMSfMRI_FIRST_beta_DLPFC_Rp <- read_excel(paste0(rootpath, "/tms/FIRST_small_HC_comp.xlsx"), sheet = "R_pMFG") %>% mutate(TMS_site = "R pDLPFC", n = 79)
+TMSfMRI_FIRST_beta_IFJ <- read_excel(paste0(rootpath, "/tms/FIRST_small_HC_comp.xlsx"), sheet = "R_IFJ") %>% mutate(TMS_site = "R IFJ", n = 76)
+TMSfMRI_FIRST_beta_FEF <- read_excel(paste0(rootpath, "/tms/FIRST_small_HC_comp.xlsx"), sheet = "R_FEF") %>% mutate(TMS_site = "R FEF", n = 78)
+TMSfMRI_FIRST_beta_preSMA <- read_excel(paste0(rootpath, "/tms/FIRST_small_HC_comp.xlsx"), sheet = "R_preSMA") %>% mutate(TMS_site = "R preSMA", n = 64)
+TMSfMRI_FIRST_beta_IPL <- read_excel(paste0(rootpath, "/tms/FIRST_small_HC_comp.xlsx"), sheet = "R_IPL") %>% mutate(TMS_site = "R IPL", n = 51)
+TMSfMRI_FIRST_beta_M1 <- read_excel(paste0(rootpath, "/tms/FIRST_small_HC_comp.xlsx"), sheet = "R_M1") %>% mutate(TMS_site = "R M1", n = 79)
+
+# TMSfMRI_Anat2_L_a_gm <- read_excel(paste0(rootpath, "/tms/Anat2_HC_comp_zmap_gm.3.xlsx"), sheet = "L_aMFG")
+# TMSfMRI_Anat2_L_p_gm <- read_excel(paste0(rootpath, "/tms/Anat2_HC_comp_zmap_gm.3.xlsx"), sheet = "L_pMFG")
+# TMSfMRI_FIRST_L_a_gm <- read_excel(paste0(rootpath, "/tms/FIRST_small_HC_comp_zmap_gm.3.xlsx"), sheet = "L_aMFG")[c(1:4)]
+# TMSfMRI_FIRST_L_p_gm <- read_excel(paste0(rootpath, "/tms/FIRST_small_HC_comp_zmap_gm.3.xlsx"), sheet = "L_pMFG")[c(1:4)]
+
+TMSfMRI_FIRST_beta <- rbind(TMSfMRI_FIRST_beta_Fp_L, TMSfMRI_FIRST_beta_Fp_R, 
+                        TMSfMRI_FIRST_beta_DLPFC_La, TMSfMRI_FIRST_beta_DLPFC_Lp, 
+                        TMSfMRI_FIRST_beta_DLPFC_Ra, TMSfMRI_FIRST_beta_DLPFC_Rp,
+                        TMSfMRI_FIRST_beta_IFJ, TMSfMRI_FIRST_beta_FEF,
+                        TMSfMRI_FIRST_beta_preSMA, TMSfMRI_FIRST_beta_IPL,
+                        TMSfMRI_FIRST_beta_M1)
+TMSfMRI_FIRST_beta <- TMSfMRI_FIRST_beta %>% pivot_longer(cols = matches(".*amyg.*"), names_to = "Subregion", values_to = "Response")
+TMSfMRI_FIRST_beta$TMS_site <- factor(TMSfMRI_FIRST_beta$TMS_site, levels = c(
+  "L Fp", "R Fp", "L aDLPFC", "L pDLPFC", "R aDLPFC", "R pDLPFC", "R IFJ", "R FEF", "R preSMA", "R IPL", "R M1"
+))
+summary(TMSfMRI_FIRST_beta)
+```
+
+
+
+```{r Left and Right only}
+TMSfMRI_FIRST_beta_LR <- TMSfMRI_FIRST_beta %>% filter(Subregion == "L_amyg" | Subregion == "R_amyg")
+summary(TMSfMRI_FIRST_beta_LR)
+
+rm_anova <- aov(Response ~ TMS_site * Subregion, data = TMSfMRI_FIRST_beta_LR)
+summary(rm_anova)
+
+qqnorm(residuals(rm_anova))
+qqline(residuals(rm_anova))
+shapiro.test(residuals(rm_anova))
+
+mean_responses_LR <- TMSfMRI_FIRST_beta_LR %>% 
+  group_by(TMS_site, Subregion) %>% 
+  summarise(mean = mean(Response),
+            sd = sd(Response),
+            n = mean(n)) %>% 
+  mutate(se = sd/sqrt(n))
+
+p.LR <- mean_responses_LR %>% 
+  ggplot(aes(x=TMS_site, y=mean, fill = Subregion))+
+  # geom_bar(col = "black", size = 1, width = 0.5, position = position_dodge(width = 0.7))+
+  stat_summary(col = "black", geom = "bar",size = .6, width = .55, , position = position_dodge(width = 0.56))+
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=0.1, color='black', 
+                position = position_dodge(width = 0.56), size=.6)+
+  geom_hline(yintercept=0, size = .4, linetype = "dashed")+
+  # geom_boxplot(col = "black", size = 1, outlier.alpha = 1, width = 0.5, position = position_dodge(width = 0.7))+
+  geom_signif(y_position=c(-0.73,-0.65), xmin=c(3,4), xmax=c(11,11), annotation=c("**"),
+              tip_length=0, size=0.4, textsize = 6, vjust = 1.5)+
+  geom_signif(y_position=c(-0.57), xmin=c(5), xmax=c(11), annotation=c("*"),
+              tip_length=0, size=0.4, textsize = 6, vjust = 1.5)+
+  scale_fill_manual(values=c("grey40","gray70"), labels = c("Left", "Right"))+
+  ylim(-0.81,0.18)+
+  ylab("TMS-indused Response (beta)")+xlab(NULL)+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.6))+
+  theme(axis.ticks=element_line(color="black",size=.6,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  theme(legend.position=c(0.08,0.95))+labs(fill="",col="")
+p.LR
+```
+
+```{r t tests}
+# L Fp
+TMSfMRI_FIRST_beta_M1$B_amyg_M1 <- TMSfMRI_FIRST_beta_M1$B_amyg
+Fp_L_vs_M1 <- TMSfMRI_FIRST_beta_M1[c(1,5,6,7)] %>% left_join(TMSfMRI_FIRST_beta_Fp_L[c(1,4)])
+Fp_L_vs_M1 <- Fp_L_vs_M1 %>% filter(!is.na(B_amyg) & !is.na(B_amyg_M1))
+t.test(Fp_L_vs_M1$B_amyg, Fp_L_vs_M1$B_amyg_M1, paired = T, alternative = "less") # t = -1.4615, df = 61, p-value = 0.07451
+
+# R Fp
+Fp_R_vs_M1 <- TMSfMRI_FIRST_beta_M1[c(1,5,6,7)] %>% left_join(TMSfMRI_FIRST_beta_Fp_R[c(1,4)])
+Fp_R_vs_M1 <- Fp_R_vs_M1 %>% filter(!is.na(B_amyg) & !is.na(B_amyg_M1))
+t.test(Fp_R_vs_M1$B_amyg, Fp_R_vs_M1$B_amyg_M1, paired = T, alternative = "less") # t = -0.94241, df = 65, p-value = 0.1747
+
+# L aDLPFC
+DLPFC_La_vs_M1 <- TMSfMRI_FIRST_beta_M1[c(1,5,6,7)] %>% left_join(TMSfMRI_FIRST_beta_DLPFC_La[c(1,4)])
+DLPFC_La_vs_M1 <- DLPFC_La_vs_M1 %>% filter(!is.na(B_amyg) & !is.na(B_amyg_M1))
+t.test(DLPFC_La_vs_M1$B_amyg, DLPFC_La_vs_M1$B_amyg_M1, paired = T, alternative = "less") # t = -2.7946, df = 74, p-value = 0.003307**
+
+# L pDLPFC
+DLPFC_Lp_vs_M1 <- TMSfMRI_FIRST_beta_M1[c(1,5,6,7)] %>% left_join(TMSfMRI_FIRST_beta_DLPFC_Lp[c(1,4)])
+DLPFC_Lp_vs_M1 <- DLPFC_Lp_vs_M1 %>% filter(!is.na(B_amyg) & !is.na(B_amyg_M1))
+t.test(DLPFC_Lp_vs_M1$B_amyg, DLPFC_Lp_vs_M1$B_amyg_M1, paired = T, alternative = "less") # t = -2.5398, df = 76, p-value = 0.006567**
+
+# R aDLPFC
+DLPFC_Ra_vs_M1 <- TMSfMRI_FIRST_beta_M1[c(1,5,6,7)] %>% left_join(TMSfMRI_FIRST_beta_DLPFC_Ra[c(1,4)])
+DLPFC_Ra_vs_M1 <- DLPFC_Ra_vs_M1 %>% filter(!is.na(B_amyg) & !is.na(B_amyg_M1))
+t.test(DLPFC_Ra_vs_M1$B_amyg, DLPFC_Ra_vs_M1$B_amyg_M1, paired = T, alternative = "less") # t = -2.1438, df = 76, p-value = 0.01762*
+
+# R pDLPFC
+DLPFC_Rp_vs_M1 <- TMSfMRI_FIRST_beta_M1[c(1,5,6,7)] %>% left_join(TMSfMRI_FIRST_beta_DLPFC_Rp[c(1,4)])
+DLPFC_Rp_vs_M1 <- DLPFC_Rp_vs_M1 %>% filter(!is.na(B_amyg) & !is.na(B_amyg_M1))
+t.test(DLPFC_Rp_vs_M1$B_amyg, DLPFC_Rp_vs_M1$B_amyg_M1, paired = T, alternative = "less") # t = -1.2675, df = 76, p-value = 0.1044
+
+
+
+
+# R FEF
+FEF_vs_M1 <- TMSfMRI_FIRST_beta_M1[c(1,5,6,7)] %>% left_join(TMSfMRI_FIRST_beta_FEF[c(1,4)])
+FEF_vs_M1 <- FEF_vs_M1 %>% filter(!is.na(B_amyg) & !is.na(B_amyg_M1))
+t.test(FEF_vs_M1$B_amyg, FEF_vs_M1$B_amyg_M1, paired = T, alternative = "less") # t = -1.4501, df = 74, p-value = 0.07563
+
+# R IFJ
+IFJ_vs_M1 <- TMSfMRI_FIRST_beta_M1[c(1,5,6,7)] %>% left_join(TMSfMRI_FIRST_beta_IFJ[c(1,4)])
+IFJ_vs_M1 <- IFJ_vs_M1 %>% filter(!is.na(B_amyg) & !is.na(B_amyg_M1))
+t.test(IFJ_vs_M1$B_amyg, IFJ_vs_M1$B_amyg_M1, paired = T, alternative = "less") # t = -1.4969, df = 72, p-value = 0.06939
+
+# R preSMA
+preSMA_vs_M1 <- TMSfMRI_FIRST_beta_M1[c(1,5,6,7)] %>% left_join(TMSfMRI_FIRST_beta_preSMA[c(1,4)])
+preSMA_vs_M1 <- preSMA_vs_M1 %>% filter(!is.na(B_amyg) & !is.na(B_amyg_M1))
+t.test(preSMA_vs_M1$B_amyg, preSMA_vs_M1$B_amyg_M1, paired = T, alternative = "less") # t = -0.3197, df = 62, p-value = 0.3751
+
+# R IPL
+IPL_vs_M1 <- TMSfMRI_FIRST_beta_M1[c(1,5,6,7)] %>% left_join(TMSfMRI_FIRST_beta_IPL[c(1,4)])
+IPL_vs_M1 <- IPL_vs_M1 %>% filter(!is.na(B_amyg) & !is.na(B_amyg_M1))
+t.test(IPL_vs_M1$B_amyg, IPL_vs_M1$B_amyg_M1, paired = T, alternative = "less") # t = -0.76263, df = 49, p-value = 0.2247
+
+
+
+
+
+
+```
+
+
+
+
+

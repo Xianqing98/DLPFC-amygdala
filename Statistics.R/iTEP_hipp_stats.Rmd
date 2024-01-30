@@ -1,0 +1,745 @@
+---
+title: "iTEP hippocampus statistics"
+output: html_document
+date: "2023-08-28"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(readxl)
+library(lme4)
+library(lmerTest)
+library(readr)
+library(patchwork)
+library(ggsignif)
+library(psych) # load correlation
+library(RColorBrewer)#color
+library(car)
+# load("C:/Users/xjl19/Desktop/TMS-iEEG/Stanford_Processed/TEP/iTEP_all.RData")
+rootpath <- "/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/3_ProcessedData_Backup/"
+wd <- paste0(rootpath,"allPatients_iEEGdata_csv/iTEP_csv_L-DLPFC_amy/2hp_nodetrend_Hipp")
+wd <- paste0(rootpath,"allPatients_iEEGdata_csv/iTEP_csv_R-Parietal_amy/2hp_nodetrend_Hipp")
+wd <- paste0(rootpath,"allPatients_iEEGdata_csv/iTEP_csv_L-DLPFC_amy/2hp_detrend500_sgACC")
+setwd(wd)
+
+```
+
+### Read neural data
+
+```{r read new TEP csv}
+TEP_hipp <- read_csv(list.files(wd, pattern = '*.csv'))
+names(TEP_hipp) <- c("Patient","Condition","TrialNumber","Channel","Time","Amplitude")
+TEP_hipp$Time <- TEP_hipp$Time*1000
+TEP_hipp$Channel <- paste(TEP_hipp$Patient, TEP_hipp$Channel, sep = "_")
+TEP_hipp$Condition <- factor(TEP_hipp$Condition, levels = c("tms", "sham"))
+TEP_hipp <- TEP_hipp %>% filter(TrialNumber <= 53)
+
+# TEP_hipp <- filter(TEP_hipp, Channel != "483_LFPx144" )
+
+TEP_hipp <- filter(TEP_hipp, 
+                    Channel != "477_LFPx86" &
+                    Channel != "477_LFPx87" &
+                    Channel != "524_LFPx154")
+
+TEP_hipp <- filter(TEP_hipp, Patient != 634)
+
+ChannelList <- TEP_hipp %>% group_by(Channel) %>% 
+  summarise(Patient = mean(Patient))
+ChannelList <- ChannelList[[1]]
+
+# add ROI info
+chlinfo_hipp <- read_excel(paste0(rootpath, "Selected_Channel_AMY.xlsx"),
+                          sheet = "TMS L-DLPFC Hipp")
+chlinfo_hipp <- read_excel(paste0(rootpath, "Selected_Channel_AMY.xlsx"),
+                          sheet = "TMS R-Parietal Hipp")
+chlinfo_hipp <- read_excel(paste0(rootpath, "Selected_Channel_AMY.xlsx"),
+                          sheet = "TMS L-DLPFC sgACC")
+
+chlinfo_hipp$Channel <- paste(chlinfo_hipp$Patient, chlinfo_hipp$Channel, sep = "_LFPx")
+TEP_hipp <- left_join(TEP_hipp, chlinfo_hipp[c(2,15,23)])
+TEP_hipp <- left_join(TEP_hipp, chlinfo_hipp[c(2,6)]) # sgacc
+```
+
+
+```{r removing trials}
+TEP_hipp <- filter(TEP_hipp, Time >= -250 & Time <= 500)
+
+# calculate baseline SD for each trial
+base_trl_hipp <- filter(TEP_hipp, Time < -50) %>%
+  group_by(Channel, TrialNumber) %>% 
+  summarise(base_trl_mean = mean(Amplitude), 
+            base_trl_sd = sd(Amplitude))
+TEP_hipp <- TEP_hipp %>% left_join(base_trl_hipp) %>% 
+  mutate(SDchange = abs((Amplitude - base_trl_mean)/base_trl_sd),
+         SD = abs(Amplitude)/base_trl_sd)
+
+# identify trials to be removed
+TEP_hipp_25ms <- filter(TEP_hipp, Time == 25 & SD > 10)
+TEP_hipp_25_450ms <- filter(TEP_hipp, Time > 25 & SD > 50)
+Deleted <- rbind(TEP_hipp_25ms, TEP_hipp_25_450ms) %>% 
+  mutate(delete = 1) %>% 
+  group_by(Channel, TrialNumber) %>% 
+  summarise(delete = mean(delete))
+TEP_hipp <- TEP_hipp %>% left_join(Deleted)
+
+# removing trials
+TEP_hipp <- TEP_hipp %>% filter(is.na(delete))
+```
+
+
+```{r filtering bad trials}
+# TEP_hipp <- left_join(TEP_hipp, chlinfo_hipp[c(2,4,5)])
+TEP_hipp_TMS <- filter(TEP_hipp, Condition == "tms")
+TEP_hipp_Sham <- filter(TEP_hipp, Condition == "sham")
+
+BadTrials_TMS <- TEP_hipp_TMS %>% group_by(Channel, TrialNumber) %>%
+  summarise(TrialNumber = mean(TrialNumber)) %>% 
+  left_join(chlinfo_hipp[c(2,4)]) %>% 
+  mutate(bad = 0)
+BadTrials_Sham <- TEP_hipp_Sham %>% group_by(Channel, TrialNumber) %>%
+  summarise(TrialNumber = mean(TrialNumber)) %>% 
+  left_join(chlinfo_hipp[c(2,5)]) %>% 
+  mutate(bad = 0)
+
+for (i in 1:nrow(BadTrials_TMS)){
+  if (BadTrials_TMS$TrialNumber[i] %in%
+      as.numeric(strsplit(BadTrials_TMS$BadTrials_TMS[i], ";")[[1]])){
+      BadTrials_TMS$bad[i] <- 1
+      }
+}
+TEP_hipp_TMS <- left_join(TEP_hipp_TMS, BadTrials_TMS)
+TEP_hipp_TMS <- filter(TEP_hipp_TMS, bad == 0)
+
+for (i in 1:nrow(BadTrials_Sham)){
+  if (BadTrials_Sham$TrialNumber[i] %in%
+      as.numeric(strsplit(BadTrials_Sham$BadTrials_Sham[i], ";")[[1]])){
+      BadTrials_Sham$bad[i] <- 1
+      }
+}
+TEP_hipp_Sham <- left_join(TEP_hipp_Sham, BadTrials_Sham)
+TEP_hipp_Sham <- filter(TEP_hipp_Sham, bad == 0)
+
+# hipp
+TEP_hipp <- rbind(TEP_hipp_TMS[-14], TEP_hipp_Sham[-14])
+# sgacc
+TEP_hipp <- rbind(TEP_hipp_TMS[-13], TEP_hipp_Sham[-13])
+
+rm(TEP_hipp_Sham)
+rm(TEP_hipp_TMS)
+
+
+TEP_hipp %>%
+  filter(Time <= 500 & Time >= -250) %>% 
+  group_by(Channel, Condition, Time) %>%
+  summarise(mean_amplitude = mean(Amplitude), se = sd(Amplitude)/sqrt(40)) %>%
+  ggplot(aes(Time, mean_amplitude))+
+  geom_hline(yintercept=0, linetype="dotted", size = .8, col = "darkgray")+
+  geom_ribbon(aes(ymin=mean_amplitude-se, ymax=mean_amplitude+se, fill = Condition), alpha = .2)+
+  stat_summary(aes(col=Condition), geom="line", size=1, alpha = .9)+
+  annotate("rect", xmin=-10, xmax=25, ymin=-30, ymax=30, fill="gray")+
+  scale_color_manual(values=c("dodgerblue3","darkgray","gray40"),
+                     labels=c("TMS","Sham","Sham w/ cutaneous"))+
+  scale_fill_manual(values=c("dodgerblue3","darkgray","gray40"),
+                    labels=c("TMS","Sham","Sham w/ cutaneous"))+
+  # ylim(-5,5)+
+  ylab("Amplitude (SD)")+xlab("Time (ms)")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=1))+
+  theme(axis.ticks=element_line(color="black",size=1,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.3)))+
+  theme(axis.title = element_text(color = "black", size = 16))+
+  theme(legend.text = element_text(color = "black", size = 16))+
+  # theme(legend.position=c(0.85,0.22))+labs(fill="",col="",linetype="")+
+  facet_wrap(~Channel)
+```
+
+```{r}
+setwd('/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/Documents - JingJiang Lab/JiangLab/4_Projects/2_DLPFC_AMY_Bella/2_TMS_iEEG')
+write.csv(filter(TEP_hipp[c(1:8)], Condition == 'tms'), "TEP_hipp_tms_LDLPFC.csv")
+write.csv(TEP_hipp[c(1:8)], "TEP_hipp_LDLPFC.csv")
+write.csv(TEP_hipp[c(1:8)], "TEP_hipp_RParietal.csv")
+```
+
+
+## normalization
+
+```{r hipp iTEP normalization}
+TEP_hipp_avg  <- TEP_hipp %>% 
+  group_by(Patient, Condition, Channel, Time, DKT, is_ant) %>% 
+  summarise(iTEP = mean(Amplitude))
+summary(TEP_hipp_avg)
+
+# calculate baseline for normalization
+baseline_hipp <- filter(TEP_hipp_avg, Time <= -50 & Time >=-250) %>%
+  group_by(Patient, Condition, Channel) %>% summarise(base_mean = mean(iTEP), 
+                                           base_sd = sd(iTEP))
+TEP_hipp_avg <- TEP_hipp_avg %>% left_join(baseline_hipp) %>% 
+  mutate(iTEP_norm = (iTEP - base_mean)/base_sd,
+         SDchange = abs((iTEP - base_mean)/base_sd))
+
+
+# write.csv(TEP_hipp_avg, "TEP_hipp_avg.csv")
+
+TEP_hipp_avg  <- TEP_hipp %>% 
+  group_by(Patient, Condition, Channel, Time) %>% 
+  summarise(iTEP = mean(Amplitude))
+summary(TEP_hipp_avg)
+
+# calculate baseline for normalization
+baseline_hipp <- filter(TEP_hipp_avg, Time <= -50 & Time >=-250) %>%
+  group_by(Patient, Condition, Channel) %>% summarise(base_mean = mean(iTEP), 
+                                           base_sd = sd(iTEP))
+TEP_hipp_avg <- TEP_hipp_avg %>% left_join(baseline_hipp) %>% 
+  mutate(iTEP_norm = (iTEP - base_mean)/base_sd,
+         SDchange = abs((iTEP - base_mean)/base_sd))
+
+
+p.sd <- TEP_hipp_avg %>%
+  filter(Time <= 500 & Time >= -250) %>% 
+  ggplot(aes(Time, iTEP_norm))+
+  geom_hline(yintercept=0, linetype="dotted", size = .8, col = "darkgray")+
+  stat_summary(aes(col=Condition), geom="line", size=1.5, alpha = .9)+
+  annotate("rect", xmin=-14, xmax=28, ymin=-20, ymax=20, fill="white")+
+  annotate("rect", xmin=-14, xmax=28, ymin=-20, ymax=20, fill="gray")+
+  scale_color_manual(values=c("brown3","darkgray"),
+                     labels=c("TMS","Sham"))+
+  scale_fill_manual(values=c("brown3","darkgray"),
+                    labels=c("TMS","Sham"))+
+  ylim(-20,20)+
+  ylab("Amplitude (SD)")+xlab("Time (ms)")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.3)))+
+  theme(axis.title = element_text(color = "black", size = 16))+
+  theme(legend.text = element_text(color = "black", size = 15))+
+  labs(fill="",col="",linetype="")+
+  facet_wrap(~Channel)
+p.sd
+```
+
+
+## Load and rearrange tvs data
+
+```{r}
+# load("/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/3_ProcessedData_Backup/iTEP_csv_L-DLPFC_hipp/iTEPamy_removed_cleaned.RData")
+# write.csv(TEP_hipp_avg_tvs, "/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/3_ProcessedData_Backup/iTEP_csv_L-DLPFC_hipp/TEP_hipp_avg_tvs.csv")
+# 
+# TEP_hipp_avg_tvs <- read.csv("/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/3_ProcessedData_Backup/iTEP_csv_L-DLPFC_hipp/TEP_hipp_avg_tvs.csv")[-1]
+# 
+# TEP_hipp_avg_tvs <- TEP_hipp_avg_tvs[c(1:6,10)] %>% 
+#   pivot_wider(names_from = Condition, values_from = iTEP_norm)
+# 
+# timecourse <- c(26:450)
+```
+
+## Comparing normalized amplitude: tms vs sham
+
+```{r Both hipp}
+# paired t-test
+timecourse <- c(26:500) # timewin: 25ms ~ 450 ms
+TEP_hipp_avg_tvs <- TEP_hipp_avg[c(1:6,10)] %>% pivot_wider(names_from = Condition, values_from = iTEP_norm)
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_hipp_avg_tvs, Time == timecourse[i])
+  t.tvs <- t.test(TEP_timepoint$tms, TEP_timepoint$sham, paired = T)
+  
+  coef_new <- 
+    data.frame(t.tvs$statistic) %>% 
+    mutate(p.value = t.tvs$p.value) %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+coef_tvs <- coef_tvs %>% 
+  mutate(sig_tvs = ifelse(p.value>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- coef_tvs$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef_tvs_B <- coef_tvs %>% mutate(corrected_p = plist_adj) %>% 
+  mutate(corrected_sig = ifelse(corrected_p < 0.05, 1, 0))
+```
+
+```{r Both sgacc}
+# paired t-test
+timecourse <- c(26:500) # timewin: 25ms ~ 450 ms
+TEP_hipp_avg_tvs <- TEP_hipp_avg[c(1:4,8)] %>% pivot_wider(names_from = Condition, values_from = iTEP_norm)
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_hipp_avg_tvs, Time == timecourse[i])
+  t.tvs <- t.test(TEP_timepoint$tms, TEP_timepoint$sham, paired = T)
+  
+  coef_new <- 
+    data.frame(t.tvs$statistic) %>% 
+    mutate(p.value = t.tvs$p.value) %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+coef_tvs <- coef_tvs %>% 
+  mutate(sig_tvs = ifelse(p.value>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- coef_tvs$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef_tvs_B <- coef_tvs %>% mutate(corrected_p = plist_adj) %>% 
+  mutate(corrected_sig = ifelse(corrected_p < 0.05, 1, 0))
+```
+
+
+```{r}
+TEP_hipp_avg_tms <- TEP_hipp_avg %>% filter(Condition == "tms")
+baseline_mean <- TEP_hipp_avg_tms %>% 
+  filter(Time < -50) %>% group_by(Channel) %>% 
+  summarise(baseline_mean = mean(iTEP_norm))
+
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_hipp_avg_tms, Time == timecourse[i])
+  TEP_timepoint <- left_join(TEP_timepoint, baseline_mean)
+  if (mean(TEP_timepoint$iTEP_norm) >= 0) {
+    tt <- t.test(TEP_timepoint$iTEP_norm, TEP_timepoint$baseline_mean, paired = T, alternative = "greater")
+  } else {
+    tt <- t.test(TEP_timepoint$iTEP_norm, TEP_timepoint$baseline_mean, paired = T, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_hipp_sig <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+
+coef_tvs_B <- coef_tvs_B %>% left_join(stats_hipp_sig[c(3,6)])
+
+```
+
+
+
+```{r Both hipp posterior}
+# paired t-test
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_hipp_avg_tvs, Time == timecourse[i] &
+                            is_ant == 0)
+  t.tvs <- t.test(TEP_timepoint$tms, TEP_timepoint$sham, paired = T)
+  
+  coef_new <- 
+    data.frame(t.tvs$statistic) %>% 
+    mutate(p.value = t.tvs$p.value) %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+coef_tvs <- coef_tvs %>% 
+  mutate(sig_tvs = ifelse(p.value>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- coef_tvs$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef_tvs_B_me <- coef_tvs %>% mutate(corrected_p = plist_adj) %>% 
+  mutate(corrected_sig = ifelse(corrected_p < 0.05, 1, 0))
+```
+
+```{r}
+TEP_hipp_avg_tms <- TEP_hipp_avg %>% filter(Condition == "tms" & is_ant == 0)
+baseline_mean <- TEP_hipp_avg_tms %>% 
+  filter(Time < -50) %>% group_by(Channel) %>% 
+  summarise(baseline_mean = mean(iTEP_norm))
+
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_hipp_avg_tms, Time == timecourse[i])
+  TEP_timepoint <- left_join(TEP_timepoint, baseline_mean)
+  if (mean(TEP_timepoint$iTEP_norm) >= 0) {
+    tt <- t.test(TEP_timepoint$iTEP_norm, TEP_timepoint$baseline_mean, paired = T, alternative = "greater")
+  } else {
+    tt <- t.test(TEP_timepoint$iTEP_norm, TEP_timepoint$baseline_mean, paired = T, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_hipp_sig_me <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+
+coef_tvs_B_me <- coef_tvs_B_me %>% left_join(stats_hipp_sig_me[c(3,6)])
+```
+
+
+
+```{r Both hipp anterior}
+# paired t-test
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_hipp_avg_tvs, Time == timecourse[i] &
+                            is_ant == 1)
+  t.tvs <- t.test(TEP_timepoint$tms, TEP_timepoint$sham, paired = T)
+  
+  coef_new <- 
+    t.tvs$p.value %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+coef_tvs <- coef_tvs %>% 
+  mutate(sig_tvs = ifelse(.>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- coef_tvs$.
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef_tvs_B_la <- coef_tvs %>% mutate(corrected_p = plist_adj) %>% 
+  mutate(corrected_sig = ifelse(corrected_p < 0.05, 1, 0))
+```
+
+```{r}
+TEP_hipp_avg_tms <- TEP_hipp_avg %>% filter(Condition == "tms" & is_ant == 1)
+baseline_mean <- TEP_hipp_avg_tms %>% 
+  filter(Time < -50) %>% group_by(Channel) %>% 
+  summarise(baseline_mean = mean(iTEP_norm))
+
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_hipp_avg_tms, Time == timecourse[i])
+  TEP_timepoint <- left_join(TEP_timepoint, baseline_mean)
+  if (mean(TEP_timepoint$iTEP_norm) >= 0) {
+    tt <- t.test(TEP_timepoint$iTEP_norm, TEP_timepoint$baseline_mean, paired = T, alternative = "greater")
+  } else {
+    tt <- t.test(TEP_timepoint$iTEP_norm, TEP_timepoint$baseline_mean, paired = T, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_hipp_sig_la <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+
+```{r Left hipp}
+# paired t-test
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_hipp_avg_tvs, Time == timecourse[i] & 
+                            DKT == "Left-Hippocampus")
+  t.tvs <- t.test(TEP_timepoint$tms, TEP_timepoint$sham, paired = T)
+  
+  coef_new <- 
+    t.tvs$p.value %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+coef_tvs <- coef_tvs %>% 
+  mutate(sig_tvs = ifelse(.>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- coef_tvs$.
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef_tvs_L <- coef_tvs %>% mutate(corrected_p = plist_adj) %>% 
+  mutate(corrected_sig = ifelse(corrected_p < 0.05, 1, 0))
+```
+
+```{r Left hipp posterior}
+# paired t-test
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_hipp_avg_tvs, Time == timecourse[i] &
+                            DKT == "Left-Hippocampus" &
+                            is_ant == 0)
+  t.tvs <- t.test(TEP_timepoint$tms, TEP_timepoint$sham, paired = T)
+  
+  coef_new <- 
+    t.tvs$p.value %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+coef_tvs <- coef_tvs %>% 
+  mutate(sig_tvs = ifelse(.>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- coef_tvs$.
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef_tvs_L_me <- coef_tvs %>% mutate(corrected_p = plist_adj) %>% 
+  mutate(corrected_sig = ifelse(corrected_p < 0.05, 1, 0))
+```
+
+```{r Left hipp anterior}
+# paired t-test
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_hipp_avg_tvs, Time == timecourse[i] &
+                            DKT == "Left-Hippocampus" &
+                            is_ant == 1)
+  t.tvs <- t.test(TEP_timepoint$tms, TEP_timepoint$sham, paired = T)
+  
+  coef_new <- 
+    t.tvs$p.value %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+coef_tvs <- coef_tvs %>% 
+  mutate(sig_tvs = ifelse(.>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- coef_tvs$.
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef_tvs_L_la <- coef_tvs %>% mutate(corrected_p = plist_adj) %>% 
+  mutate(corrected_sig = ifelse(corrected_p < 0.05, 1, 0))
+```
+
+
+
+
+```{r Right hipp}
+# paired t-test
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_hipp_avg_tvs, Time == timecourse[i] &
+                            DKT == "Right-Hippocampus")
+  t.tvs <- t.test(TEP_timepoint$tms, TEP_timepoint$sham, paired = T)
+  
+  coef_new <- 
+    data.frame(t.tvs$statistic) %>% 
+    mutate(p.value = t.tvs$p.value) %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+coef_tvs <- coef_tvs %>% 
+  mutate(sig_tvs = ifelse(p.value>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- coef_tvs$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef_tvs_R <- coef_tvs %>% mutate(corrected_p = plist_adj) %>% 
+  mutate(corrected_sig = ifelse(corrected_p < 0.05, 1, 0))
+```
+
+```{r}
+TEP_hipp_avg_tms <- TEP_hipp_avg %>% 
+  filter(Condition == "tms" & DKT == "Right-Hippocampus")
+baseline_mean <- TEP_hipp_avg_tms %>% 
+  filter(Time < -50) %>% group_by(Channel) %>% 
+  summarise(baseline_mean = mean(iTEP_norm))
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_hipp_avg_tms, Time == timecourse[i])
+  TEP_timepoint <- left_join(TEP_timepoint, baseline_mean)
+  if (mean(TEP_timepoint$iTEP_norm) >= 0) {
+    tt <- t.test(TEP_timepoint$iTEP_norm, TEP_timepoint$baseline_mean, paired = T, alternative = "greater")
+  } else {
+    tt <- t.test(TEP_timepoint$iTEP_norm, TEP_timepoint$baseline_mean, paired = T, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_hipp_sig_R <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+
+coef_tvs_R <- coef_tvs_R %>% left_join(stats_hipp_sig_R[c(3,6)])
+```
+
+
+```{r Right hipp posterior}
+# paired t-test
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_hipp_avg_tvs, Time == timecourse[i] &
+                            DKT == "Right-Hippocampus" &
+                            is_ant == 0)
+  t.tvs <- t.test(TEP_timepoint$tms, TEP_timepoint$sham, paired = T)
+  
+  coef_new <- 
+    data.frame(t.tvs$statistic) %>% 
+    mutate(p.value = t.tvs$p.value) %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+coef_tvs <- coef_tvs %>% 
+  mutate(sig_tvs = ifelse(p.value>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- coef_tvs$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef_tvs_R_me <- coef_tvs %>% mutate(corrected_p = plist_adj) %>% 
+  mutate(corrected_sig = ifelse(corrected_p < 0.05, 1, 0))
+```
+
+```{r}
+TEP_hipp_avg_tms <- TEP_hipp_avg %>% 
+  filter(Condition == "tms" & DKT == "Right-Hippocampus" & is_ant == 0)
+baseline_mean <- TEP_hipp_avg_tms %>% 
+  filter(Time < -50) %>% group_by(Channel) %>% 
+  summarise(baseline_mean = mean(iTEP_norm))
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_hipp_avg_tms, Time == timecourse[i])
+  TEP_timepoint <- left_join(TEP_timepoint, baseline_mean)
+  if (mean(TEP_timepoint$iTEP_norm) >= 0) {
+    tt <- t.test(TEP_timepoint$iTEP_norm, TEP_timepoint$baseline_mean, paired = T, alternative = "greater")
+  } else {
+    tt <- t.test(TEP_timepoint$iTEP_norm, TEP_timepoint$baseline_mean, paired = T, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_hipp_sig_R_me <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+
+coef_tvs_R_me <- coef_tvs_R_me %>% left_join(stats_hipp_sig_R_me[c(3,6)])
+```
+
+```{r Right hipp anterior}
+# paired t-test
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_hipp_avg_tvs, Time == timecourse[i] &
+                            DKT == "Right-Hippocampus" &
+                            is_ant == 1)
+  t.tvs <- t.test(TEP_timepoint$tms, TEP_timepoint$sham, paired = T)
+  
+  coef_new <- 
+    t.tvs$p.value %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+coef_tvs <- coef_tvs %>% 
+  mutate(sig_tvs = ifelse(.>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- coef_tvs$.
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef_tvs_R_la <- coef_tvs %>% mutate(corrected_p = plist_adj) %>% 
+  mutate(corrected_sig = ifelse(corrected_p < 0.05, 1, 0))
+```
+
+```{r}
+TEP_hipp_avg_tms <- TEP_hipp_avg %>% 
+  filter(Condition == "tms" & DKT == "Right-Hippocampus" & is_ant == 1)
+baseline_mean <- TEP_hipp_avg_tms %>% 
+  filter(Time < -50) %>% group_by(Channel) %>% 
+  summarise(baseline_mean = mean(iTEP_norm))
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_hipp_avg_tms, Time == timecourse[i])
+  TEP_timepoint <- left_join(TEP_timepoint, baseline_mean)
+  if (mean(TEP_timepoint$iTEP_norm) >= 0) {
+    tt <- t.test(TEP_timepoint$iTEP_norm, TEP_timepoint$baseline_mean, paired = T, alternative = "greater")
+  } else {
+    tt <- t.test(TEP_timepoint$iTEP_norm, TEP_timepoint$baseline_mean, paired = T, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_hipp_sig_R_la <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+# site specificity
+
+```{r}
+load("~/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/3_ProcessedData_Backup/site_specificity_amy/avh_site_specificity_TMS.RData")
+load("~/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/3_ProcessedData_Backup/site_specificity_amy/TEP/TMSsite_specificity.RData")
+TEP_hipp_avg_tms <- TEP_hipp_avg %>% filter(Condition == "tms") %>% mutate(ROI = "Hippocampus")
+TEP_tms_B <- filter(TEP_amy_tms_B, TMSsite == "L-DLPFC")[-c(6,12)] %>% mutate(ROI = "Amygdala") %>% rbind(TEP_hipp_avg_tms[-6])
+TEP_tms_B_me <- filter(TEP_amy_tms_B_me, TMSsite == "L-DLPFC")[-c(6,12)] %>% mutate(ROI = "Amygdala") %>% rbind(TEP_hipp_avg_tms[-6])
+TEP_tms_B_la <- filter(TEP_amy_tms_B_la, TMSsite == "L-DLPFC")[-c(6,12)] %>% mutate(ROI = "Amygdala") %>% rbind(TEP_hipp_avg_tms[-6])
+
+TEP_hipp_avg_tms_L <- TEP_hipp_avg_tms %>% filter(DKT == "Left-Hippocampus") %>% mutate(ROI = "Hippocampus")
+TEP_tms_L <- filter(TEP_amy_tms_L, TMSsite == "L-DLPFC")[-c(6,12)] %>% mutate(ROI = "Amygdala") %>% rbind(TEP_hipp_avg_tms_L[-6])
+TEP_tms_L_me <- filter(TEP_amy_tms_L_me, TMSsite == "L-DLPFC")[-c(6,12)] %>% mutate(ROI = "Amygdala") %>% rbind(TEP_hipp_avg_tms_L[-6])
+TEP_tms_L_la <- filter(TEP_amy_tms_L_la, TMSsite == "L-DLPFC")[-c(6,12)] %>% mutate(ROI = "Amygdala") %>% rbind(TEP_hipp_avg_tms_L[-6])
+
+TEP_hipp_avg_tms_R <- TEP_hipp_avg_tms %>% filter(DKT == "Right-Hippocampus") %>% mutate(ROI = "Hippocampus")
+TEP_tms_R <- filter(TEP_amy_tms_R, TMSsite == "L-DLPFC")[-c(6,12)] %>% mutate(ROI = "Amygdala") %>% rbind(TEP_hipp_avg_tms_R[-6])
+TEP_tms_R_me <- filter(TEP_amy_tms_R_me, TMSsite == "L-DLPFC")[-c(6,12)] %>% mutate(ROI = "Amygdala") %>% rbind(TEP_hipp_avg_tms_R[-6])
+TEP_tms_R_la <- filter(TEP_amy_tms_R_la, TMSsite == "L-DLPFC")[-c(6,12)] %>% mutate(ROI = "Amygdala") %>% rbind(TEP_hipp_avg_tms_R[-6])
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,847 @@
+---
+title: "CCEP L-DLPFC hipp"
+author: "Xianqing Liu"
+date: "4/26/2023"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(purrr)
+library(readxl)
+library(lme4)
+library(lmerTest)
+library(readr)
+library(patchwork)
+library(ggsignif)
+library(psych) # load correlation
+library(RColorBrewer)#color
+library(car)
+rootpath <- "/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/3_ProcessedData_Backup/"
+wd <- paste0(rootpath,"allPatients_iEEGdata_csv/CCEP_csv_L-DLPFC_amy/2hp_nodetrend_Hipp")
+wd <- paste0(rootpath,"allPatients_iEEGdata_csv/CCEP_csv_L-IFG_amy/2hp_nodetrend_Hipp")
+setwd(wd)
+```
+
+### Read neural data
+
+```{r read new CCEP csv}
+CCEP_hipp <- read_csv(list.files(wd, pattern = '*.csv'))
+names(CCEP_hipp) <- c("Patient","TrialNumber","Channel","Time","Amplitude")
+CCEP_hipp$Channel <- paste(CCEP_hipp$Patient, CCEP_hipp$Channel, sep = "_")
+
+# add ROI info
+chlinfo_hipp <- read_excel(paste0(rootpath, "Selected_Channel_AMY.xlsx"),
+                          sheet = "esTT L-DLPFC Hipp") # l dlpfc
+
+chlinfo_hipp <- read_excel(paste0(rootpath, "Selected_Channel_AMY.xlsx"),
+                          sheet = "esTT L-IFG Hipp") # l dlpfc
+
+chlinfo_hipp$Channel <- paste(chlinfo_hipp$Patient, chlinfo_hipp$Channel, sep = "_LFPx")
+CCEP_hipp <- left_join(CCEP_hipp, chlinfo_hipp[c(2,14,22)])
+
+CCEP_hipp <- filter(CCEP_hipp, 
+                   Channel != "460_LFPx83" &
+                   Channel != "625_LFPx137")
+
+CCEP_hipp <- filter(CCEP_hipp, 
+                   Channel != "403_LFPx123")
+
+ChannelList <- CCEP_hipp %>% group_by(Channel) %>% 
+  summarise(Patient = mean(Patient))
+ChannelList <- ChannelList[[1]]
+
+```
+
+```{r removing trials}
+CCEP_hipp <- filter(CCEP_hipp, Time >= -100 & Time <= 500)
+
+# calculate baseline SD for each trial
+base_trl_hipp <- filter(CCEP_hipp, Time < -10) %>%
+  group_by(Channel, TrialNumber) %>% 
+  summarise(base_trl_mean = mean(Amplitude), 
+            base_trl_sd = sd(Amplitude))
+CCEP_hipp <- CCEP_hipp %>% left_join(base_trl_hipp) %>% 
+  mutate(SDchange = abs((Amplitude - base_trl_sd)/base_trl_sd),
+         SD = abs(Amplitude)/base_trl_sd)
+
+# identify trials to be removed
+CCEP_hipp_8ms <- filter(CCEP_hipp, Time == 8 & SD > 10)
+CCEP_hipp_9_1000ms <- filter(CCEP_hipp, Time > 8 & SD > 50)
+Deleted <- rbind(CCEP_hipp_8ms, CCEP_hipp_9_1000ms) %>% 
+  mutate(delete = 1) %>% 
+  group_by(Channel, TrialNumber) %>% 
+  summarise(delete = mean(delete))
+CCEP_hipp <- CCEP_hipp %>% left_join(Deleted)
+
+# removing trials
+CCEP_hipp <- CCEP_hipp %>% filter(is.na(delete))
+```
+
+
+```{r filtering bad trials}
+BadTrials <- CCEP_hipp %>% group_by(Channel, TrialNumber) %>%
+  summarise(TrialNumber = mean(TrialNumber)) %>% 
+  left_join(chlinfo_hipp[c(2,4)]) %>% 
+  mutate(bad = 0)
+
+for (i in 1:nrow(BadTrials)){
+  if (BadTrials$TrialNumber[i] %in%
+      as.numeric(strsplit(BadTrials$BadTrials_esTT[i], ";")[[1]])){
+      BadTrials$bad[i] <- 1
+      }
+}
+CCEP_hipp <- left_join(CCEP_hipp, BadTrials)
+CCEP_hipp <- filter(CCEP_hipp, bad == 0)
+```
+
+
+```{r plot EPs in all channels}
+CCEP_hipp %>% 
+  # filter(DKT == "Left-Hippocampus") %>%
+  # filter(DKT == "Right-Hippocampus") %>%
+  # filter(is_ant == 0) %>%
+  # filter(is_ant == 1) %>%
+  group_by(Channel, Time) %>%
+  summarise(mean_amplitude = mean(Amplitude), se = sd(Amplitude)/sqrt(30)) %>%
+  ggplot(aes(Time, mean_amplitude))+
+  geom_ribbon(aes(ymin=mean_amplitude-se, ymax=mean_amplitude+se), fill = "green4", alpha = .2)+
+  stat_summary(col="green4", geom="line")+
+  geom_vline(xintercept=-8, linetype="dashed", size = .8)+
+  geom_vline(xintercept=8, linetype="dashed", size = .8)+
+  geom_vline(xintercept=200, linetype="dashed", size = .8, col = "blue")+
+  geom_hline(yintercept=0, linetype="dotted", size = .8, col = "darkgray")+
+  # ylim(-10,10)+
+  ylab("Mean Amplitude")+theme_classic()+
+  facet_wrap(~Channel)
+```
+
+
+```{r}
+setwd('/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/Documents - JingJiang Lab/JiangLab/4_Projects/2_DLPFC_AMY_Bella/1_iES_iEEG')
+write.csv(CCEP_hipp[c(1:7)], "CCEP_hipp_LDLPFC.csv")
+write.csv(CCEP_hipp[c(1:7)], "CCEP_hipp_LVLPFC.csv")
+write.csv(CCEP_hipp[c(1:7)], "CCEP_hipp_RDLPFC.csv")
+```
+
+```{r normalization}
+CCEP_hipp_avg <- CCEP_hipp %>% 
+  group_by(Patient, Channel, Time, DKT, is_ant) %>% 
+  summarise(EP = mean(Amplitude))
+
+# normalization
+baseline_hipp <- filter(CCEP_hipp_avg, Time < -10) %>%
+  group_by(Patient, Channel) %>% summarise(base_mean = mean(EP), 
+                                           base_sd = sd(EP))
+CCEP_hipp_avg <- CCEP_hipp_avg %>% left_join(baseline_hipp) %>% 
+  mutate(CCEP_norm = (EP - base_mean)/base_sd,
+         SDchange = abs((EP - base_mean)/base_sd))
+
+
+setwd(rootpath)
+write.csv(CCEP_hipp_avg, "CCEP_hipp_avg_L-DLPFC.csv")
+write.csv(CCEP_hipp_avg, "CCEP_hipp_avg_L-DLPFC_b200.csv")
+write.csv(CCEP_hipp_avg, "CCEP_hipp_avg_R-DLPFC.csv")
+write.csv(CCEP_hipp_avg, "CCEP_hipp_avg_L-VLPFC.csv")
+write.csv(CCEP_hipp_avg, "CCEP_hipp_avg_L-VLPFC_b200.csv")
+
+write.csv(CCEP_hipp_avg, "CCEP_hipp_avg_R-VLPFC.csv")
+```
+
+
+
+```{r Whole hippocampus}
+# baseline_wave <- CCEP_hipp_avg %>% filter(Time < -10) %>% group_by(Time) %>% 
+#   summarise(baseline = mean(CCEP_norm),
+#             SD = mean(SDchange))
+# b_EP_95 = quantile(baseline_wave$EP, 0.95)
+# b_EP_05 = quantile(baseline_wave$EP, 0.05)
+# b_SD_95 = quantile(baseline_wave$SD, 0.95)
+# b_mean = mean(baseline_wave$EP)
+
+timecourse <- c(9:500)
+baseline_mean <- CCEP_hipp_avg %>% filter(Time < -10) %>% group_by(Channel) %>% 
+  summarise(baseline_mean = mean(CCEP_norm))
+
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  EP_timepoint <- filter(CCEP_hipp_avg, Time == timecourse[i])
+  EP_timepoint <- left_join(EP_timepoint, baseline_mean)
+  if (mean(EP_timepoint$CCEP_norm) >= 0) {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "greater")
+  } else {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_hipp_sig <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+
+
+```{r left hippocampus}
+baseline_mean_L <- filter(CCEP_hipp_avg, DKT == "Left-Hippocampus" & Time < -10) %>% 
+  group_by(Channel) %>% 
+  summarise(baseline_mean = mean(CCEP_norm))
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  EP_timepoint <- filter(CCEP_hipp_avg, DKT == "Left-Hippocampus" & Time == timecourse[i])
+  EP_timepoint <- left_join(EP_timepoint, baseline_mean_L)
+  if (mean(EP_timepoint$CCEP_norm) >= 0) {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "greater")
+  } else {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "less")
+  }
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_hipp_L_sig <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+
+
+```{r Right hippocampus}
+# baseline_wave_R <- filter(CCEP_hipp_avg, DKT == "Right-Hippocampus" & Time < -10) %>% 
+#   group_by(Time) %>% 
+#   summarise(EP = mean(CCEP_norm),
+#             SD = mean(SDchange))
+# b_EP_95_R = quantile(baseline_wave_R$EP, 0.95)
+# b_EP_05_R = quantile(baseline_wave_R$EP, 0.05)
+# b_SD_95_R = quantile(baseline_wave_R$SD, 0.95)
+# b_mean_R = mean(baseline_wave_R$EP)
+
+baseline_mean_R <- filter(CCEP_hipp_avg, DKT == "Right-Hippocampus" & Time < -10) %>% 
+  group_by(Channel) %>% 
+  summarise(baseline_mean = mean(CCEP_norm))
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  EP_timepoint <- filter(CCEP_hipp_avg, DKT == "Right-Hippocampus" & Time == timecourse[i])
+  EP_timepoint <- left_join(EP_timepoint, baseline_mean_R)
+  if (mean(EP_timepoint$CCEP_norm) >= 0) {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "greater")
+  } else {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_hipp_R_sig <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+```{r Medial hippocampus}
+# baseline_wave_pos <- filter(CCEP_hipp_avg, is_ant == 0 & Time < -10) %>% 
+#   group_by(Time) %>% 
+#   summarise(EP = mean(CCEP_norm),
+#             SD = mean(SDchange))
+# b_EP_95_pos = quantile(baseline_wave_me$EP, 0.95)
+# b_EP_05_pos = quantile(baseline_wave_me$EP, 0.05)
+# b_SD_95_pos = quantile(baseline_wave_me$SD, 0.95)
+# b_mean_pos = mean(baseline_wave_me$EP)
+
+baseline_mean_pos <- filter(CCEP_hipp_avg, is_ant == 0 & Time < -10) %>% 
+  group_by(Channel) %>% 
+  summarise(baseline_mean = mean(CCEP_norm))
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  EP_timepoint <- filter(CCEP_hipp_avg, is_ant == 0 & Time == timecourse[i])
+  EP_timepoint <- left_join(EP_timepoint, baseline_mean_me)
+  if (mean(EP_timepoint$CCEP_norm) >= 0) {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "greater")
+  } else {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_hipp_pos_sig <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+
+
+```{r anterior hippocampus}
+baseline_mean_ant <- filter(CCEP_hipp_avg, is_ant == 1 & Time < -10) %>% 
+  group_by(Channel) %>% 
+  summarise(baseline_mean = mean(CCEP_norm))
+
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  EP_timepoint <- filter(CCEP_hipp_avg, is_ant == 1 & Time == timecourse[i])
+  EP_timepoint <- left_join(EP_timepoint, baseline_mean_ant)
+  if (mean(EP_timepoint$CCEP_norm) >= 0) {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "greater")
+  } else {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_hipp_ant_sig <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+
+```{r Medial left hippocampus}
+# baseline_wave_pos_L <- filter(CCEP_hipp_avg, is_ant == 0 & Time < -10 & DKT == "Left-Hippocampus") %>% 
+#   group_by(Time) %>% 
+#   summarise(EP = mean(CCEP_norm),
+#             SD = mean(SDchange))
+# b_EP_95_pos_L = quantile(baseline_wave_pos_L$EP, 0.95)
+# b_EP_05_pos_L = quantile(baseline_wave_pos_L$EP, 0.05)
+# b_SD_95_pos_L = quantile(baseline_wave_pos_L$SD, 0.95)
+# b_mean_pos_L = mean(baseline_wave_pos_L$EP)
+
+baseline_mean_L_pos <- filter(CCEP_hipp_avg, DKT == "Left-Hippocampus" & is_ant == 0 & Time < -10) %>% 
+  group_by(Channel) %>% 
+  summarise(baseline_mean = mean(CCEP_norm))
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  EP_timepoint <- filter(CCEP_hipp_avg, DKT == "Left-Hippocampus" & is_ant == 0 & Time == timecourse[i])
+  EP_timepoint <- left_join(EP_timepoint, baseline_mean_L_me)
+  if (mean(EP_timepoint$CCEP_norm) >= 0) {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "greater")
+  } else {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_hipp_L_pos_sig <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+
+```{r Medial right hippocampus}
+# baseline_wave_pos_R <- filter(CCEP_hipp_avg, is_ant == 0 & Time < -10 & DKT == "Right-Hippocampus") %>% 
+#   group_by(Time) %>% 
+#   summarise(EP = mean(CCEP_norm),
+#             SD = mean(SDchange))
+# b_EP_95_pos_R = quantile(baseline_wave_pos_R$EP, 0.95)
+# b_EP_05_pos_R = quantile(baseline_wave_pos_R$EP, 0.05)
+# b_SD_95_pos_R = quantile(baseline_wave_pos_R$SD, 0.95)
+# b_mean_pos_R = mean(baseline_wave_pos_R$EP)
+
+baseline_mean_R_pos <- filter(CCEP_hipp_avg, is_ant == 0 & Time < -10 & DKT == "Right-Hippocampus") %>% 
+  group_by(Channel) %>% 
+  summarise(baseline_mean = mean(CCEP_norm))
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  EP_timepoint <- filter(CCEP_hipp_avg, is_ant == 0  & DKT == "Right-Hippocampus" & Time == timecourse[i])
+  EP_timepoint <- left_join(EP_timepoint, baseline_mean_R_me)
+  if (mean(EP_timepoint$CCEP_norm) >= 0) {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "greater")
+  } else {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_hipp_R_pos_sig <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+
+```
+
+
+
+```{r Lateral left hippocampus}
+# baseline_wave_ant_L <- filter(CCEP_hipp_avg, is_ant == 1 & Time < -10 & DKT == "Left-Hippocampus") %>% 
+#   group_by(Time) %>% 
+#   summarise(EP = mean(CCEP_norm),
+#             SD = mean(SDchange))
+# b_EP_95_ant_L = quantile(baseline_wave_ant_L$EP, 0.95)
+# b_EP_05_ant_L = quantile(baseline_wave_ant_L$EP, 0.05)
+# b_SD_95_ant_L = quantile(baseline_wave_ant_L$SD, 0.95)
+# b_mean_ant_L = mean(baseline_wave_ant_L$EP)
+
+baseline_mean_L_ant <- filter(CCEP_hipp_avg, is_ant == 1 & Time < -10 & DKT == "Left-Hippocampus") %>% 
+  group_by(Channel) %>% 
+  summarise(baseline_mean = mean(CCEP_norm))
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  EP_timepoint <- filter(CCEP_hipp_avg, is_ant == 1  & DKT == "Left-Hippocampus" & Time == timecourse[i])
+  EP_timepoint <- left_join(EP_timepoint, baseline_mean_L_ant)
+  if (mean(EP_timepoint$CCEP_norm) >= 0) {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "greater")
+  } else {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_hipp_L_ant_sig <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+
+```
+
+
+```{r Lateral right hippocampus}
+# baseline_wave_ant_R <- filter(CCEP_hipp_avg, is_ant == 1 & Time < -10 & DKT == "Right-Hippocampus") %>% 
+#   group_by(Time) %>% 
+#   summarise(EP = mean(CCEP_norm),
+#             SD = mean(SDchange))
+# b_EP_95_ant_R = quantile(baseline_wave_ant_R$EP, 0.95)
+# b_EP_05_ant_R = quantile(baseline_wave_ant_R$EP, 0.05)
+# b_SD_95_ant_R = quantile(baseline_wave_ant_R$SD, 0.95)
+# b_mean_ant_R = mean(baseline_wave_ant_R$EP)
+
+baseline_mean_R_ant <- filter(CCEP_hipp_avg, is_ant == 1 & Time < -10 & DKT == "Left-Hippocampus") %>% 
+  group_by(Channel) %>% 
+  summarise(baseline_mean = mean(CCEP_norm))
+
+# amplitude
+coef <- data.frame()
+for (i in 1:length(timecourse)){
+  EP_timepoint <- filter(CCEP_hipp_avg, is_ant == 1  & DKT == "Left-Hippocampus" & Time == timecourse[i])
+  EP_timepoint <- left_join(EP_timepoint, baseline_mean_R_ant)
+  if (mean(EP_timepoint$CCEP_norm) >= 0) {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "greater")
+  } else {
+    tt <- t.test(EP_timepoint$CCEP_norm, mu=0, alternative = "less")
+  }
+
+  coef_new <- 
+    tt[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef <- bind_rows(coef,coef_new)
+}
+coef <- coef %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef <- coef %>% mutate(corrected_sig = plist_adj)
+
+stats_hipp_R_ant_sig <- coef %>% 
+  mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+
+# Site Specificity
+
+```{r}
+load(paste0(rootpath,"site_specificity_amy/iESsite_specificity.RData"))
+CCEP_hipp_avg <- CCEP_hipp_avg %>% mutate(iESsite = "L-DLPFC")
+
+CCEP_amy_B <- CCEP_amy_B %>% mutate(ROI = "Amygdala")
+CCEP_amy_B_me <- CCEP_amy_B_me %>% mutate(ROI = "Amygdala")
+CCEP_amy_B_la <- CCEP_amy_B_la %>% mutate(ROI = "Amygdala")
+CCEP_amy_L <- CCEP_amy_L %>% mutate(ROI = "Amygdala")
+CCEP_amy_L_me <- CCEP_amy_L_me %>% mutate(ROI = "Amygdala")
+CCEP_amy_L_la <- CCEP_amy_L_la %>% mutate(ROI = "Amygdala")
+CCEP_amy_R <- CCEP_amy_R %>% mutate(ROI = "Amygdala")
+CCEP_amy_R_me <- CCEP_amy_R_me %>% mutate(ROI = "Amygdala")
+CCEP_amy_R_la <- CCEP_amy_R_la %>% mutate(ROI = "Amygdala")
+
+CCEP_hipp_B <- CCEP_hipp_avg %>% mutate(ROI = "Hippocampus")
+CCEP_hipp_L <- CCEP_hipp_B %>% filter(DKT == "Left-Hippocampus")
+CCEP_hipp_R <- CCEP_hipp_B %>% filter(DKT == "Right-Hippocampus")
+
+CCEP_B <- CCEP_amy_B[-5] %>% rbind(CCEP_hipp_B[-5])
+CCEP_B_me <- CCEP_amy_B_me[-5] %>% rbind(CCEP_hipp_B[-5])
+CCEP_B_la <- CCEP_amy_B_la[-5] %>% rbind(CCEP_hipp_B[-5])
+CCEP_L <- CCEP_amy_L[-5] %>% rbind(CCEP_hipp_L[-5])
+CCEP_L_me <- CCEP_amy_L_me[-5] %>% rbind(CCEP_hipp_L[-5])
+CCEP_L_la <- CCEP_amy_L_la[-5] %>% rbind(CCEP_hipp_L[-5])
+CCEP_R <- CCEP_amy_R[-5] %>% rbind(CCEP_hipp_R[-5])
+CCEP_R_me <- CCEP_amy_R_me[-5] %>% rbind(CCEP_hipp_R[-5])
+CCEP_R_la <- CCEP_amy_R_la[-5] %>% rbind(CCEP_hipp_R[-5])
+
+```
+
+
+## amygdala vs hippocampus (Left DLPFC)
+
+```{r Both}
+# plot CCEP comparison
+filter(CCEP_B, iESsite =="L-DLPFC") %>%
+  group_by(Time, ROI) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(14)) %>% 
+  filter(Time > 0 & Time <= 500) %>% 
+  ggplot(aes(x = Time, y = norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = ROI), alpha = .25)+
+  geom_line(aes(col = ROI),size=1.2)+
+  annotate("rect", xmin=117, xmax=163, ymin=14, ymax=14.7, fill="dodgerblue3")+
+  annotate("rect", xmin=0, xmax=12, ymin=-1.5, ymax=1.5, fill="gray")+
+  scale_color_manual(values=c("dodgerblue3","darkgrey"))+
+  scale_fill_manual(values=c("dodgerblue3","darkgrey"))+
+  scale_y_continuous(limits=c(-13,15), breaks = c(-10,-5,0,5,10,15))+
+  scale_x_continuous(limits=c(-70,500), breaks=c(0,100,200,300,400,500))+
+  xlab("Time (ms)")+ ylab("Amplitude (SD)")+ 
+  ggtitle("Both amy, n(L-DLPFC) = 11, n(L-VLPFC) = 17")+theme_classic()
+
+coef_all <- data.frame()
+for (i in 1:length(timecourse)){
+  CCEP_timepoint <- filter(CCEP_B, Time==timecourse[i], iESsite=="L-DLPFC")
+  m.timepoint <- t.test(CCEP_norm ~ ROI, data = CCEP_timepoint)
+    coef_new <- 
+    m.timepoint[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_all <- bind_rows(coef_all,coef_new)
+}
+coef_all <- coef_all %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef_all$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef_all <- coef_all %>% mutate(corrected_sig = plist_adj)
+
+stats_avh_B <- coef_all %>% 
+mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+```{r Both medial}
+# plot CCEP comparison
+filter(CCEP_B_me, iESsite=="L-DLPFC") %>%
+  group_by(Time, ROI) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(5)) %>% 
+  filter(Time >=-250 & Time <= 500) %>% 
+  ggplot(aes(x = Time, y = norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = ROI), alpha = .25)+
+  geom_line(aes(col = ROI),size=1.2)
+
+# build LME timepoint by timepoint
+# timecourse <- c(26,27,28) # for model testing
+
+coef_all <- data.frame()
+for (i in 1:length(timecourse)){
+  CCEP_timepoint <- filter(CCEP_B_me, Time==timecourse[i], iESsite=="L-DLPFC")
+  m.timepoint <- t.test(CCEP_norm ~ ROI, data = CCEP_timepoint)
+    coef_new <- 
+    m.timepoint[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_all <- bind_rows(coef_all,coef_new)
+}
+coef_all <- coef_all %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef_all$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef_all <- coef_all %>% mutate(corrected_sig = plist_adj)
+
+stats_avh_B_me <- coef_all %>% 
+mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+```{r Both lateral}
+# plot CCEP comparison
+filter(CCEP_B_la, iESsite=="L-DLPFC") %>%
+  group_by(Time, ROI) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(6)) %>% 
+  filter(Time >=-250 & Time <= 450) %>% 
+  ggplot(aes(x = Time, y = norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = ROI), alpha = .25)+
+  geom_line(aes(col = ROI),size=1.2)
+
+# build LME timepoint by timepoint
+# timecourse <- c(26,27,28) # for model testing
+
+coef_all <- data.frame()
+for (i in 1:length(timecourse)){
+  CCEP_timepoint <- filter(CCEP_B_la, Time==timecourse[i], iESsite=="L-DLPFC")
+  m.timepoint <- t.test(CCEP_norm ~ ROI, data = CCEP_timepoint)
+    coef_new <- 
+    m.timepoint[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_all <- bind_rows(coef_all,coef_new)
+}
+coef_all <- coef_all %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef_all$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef_all <- coef_all %>% mutate(corrected_sig = plist_adj)
+
+stats_avh_B_la <- coef_all %>% 
+mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+
+
+```{r Left}
+# plot CCEP comparison
+filter(CCEP_L, iESsite=="L-DLPFC") %>%
+  group_by(Time, ROI) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(10)) %>% 
+  filter(Time >=-250 & Time <= 450) %>% 
+  ggplot(aes(x = Time, y = norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = ROI), alpha = .25)+
+  geom_line(aes(col = ROI),size=1.2)
+
+# build LME timepoint by timepoint
+# timecourse <- c(26,27,28) # for model testing
+
+coef_all <- data.frame()
+for (i in 1:length(timecourse)){
+  CCEP_timepoint <- filter(CCEP_L, Time==timecourse[i], iESsite=="L-DLPFC")
+  m.timepoint <- t.test(CCEP_norm ~ ROI, data = CCEP_timepoint)
+    coef_new <- 
+    m.timepoint[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_all <- bind_rows(coef_all,coef_new)
+}
+coef_all <- coef_all %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef_all$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef_all <- coef_all %>% mutate(corrected_sig = plist_adj)
+
+stats_avh_L <- coef_all %>% 
+mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+```{r left medial}
+# plot CCEP comparison
+filter(CCEP_L_me, iESsite=="L-DLPFC") %>%
+  group_by(Time, ROI) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(5)) %>% 
+  filter(Time >=-250 & Time <= 450) %>% 
+  ggplot(aes(x = Time, y = norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = ROI), alpha = .25)+
+  geom_line(aes(col = ROI),size=1.2)
+
+# build LME timepoint by timepoint
+# timecourse <- c(26,27,28) # for model testing
+
+coef_all <- data.frame()
+for (i in 1:length(timecourse)){
+  CCEP_timepoint <- filter(CCEP_L_me, Time==timecourse[i], iESsite=="L-DLPFC")
+  amyg <- CCEP_timepoint %>% filter(ROI == "Amygdala")
+  hipp <- CCEP_timepoint %>% filter(ROI == "Hippocampus")
+  m.timepoint <- t.test(hipp$CCEP_norm, mu =amyg$CCEP_norm)
+    coef_new <- 
+    m.timepoint[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_all <- bind_rows(coef_all,coef_new)
+}
+coef_all <- coef_all %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef_all$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef_all <- coef_all %>% mutate(corrected_sig = plist_adj)
+
+stats_avh_L_me <- coef_all %>% 
+mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+
+```
+
+
+```{r Left lateral}
+# plot CCEP comparison
+filter(CCEP_L_la, iESsite=="L-DLPFC") %>%
+  group_by(Time, ROI) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(7)) %>% 
+  filter(Time >=-250 & Time <= 450) %>% 
+  ggplot(aes(x = Time, y = norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = ROI), alpha = .25)+
+  geom_line(aes(col = ROI),size=1.2)
+
+# build LME timepoint by timepoint
+# timecourse <- c(26,27,28) # for model testing
+
+coef_all <- data.frame()
+for (i in 1:length(timecourse)){
+  CCEP_timepoint <- filter(CCEP_L_la, Time==timecourse[i], iESsite=="L-DLPFC")
+  # m.timepoint <- lmer(CCEP_norm ~ iESsite + (1 | Patient), data = TEP_timepoint,
+  #                     control = lmerControl(optimizer="bobyqa"))
+  m.timepoint <- t.test(CCEP_norm ~ ROI, data = CCEP_timepoint)
+    coef_new <- 
+    m.timepoint[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_all <- bind_rows(coef_all,coef_new)
+}
+coef_all <- coef_all %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef_all$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef_all <- coef_all %>% mutate(corrected_sig = plist_adj)
+
+stats_avh_L_la <- coef_all %>% 
+mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+
+
+```{r right}
+# plot CCEP comparison
+filter(CCEP_R, iESsite=="L-DLPFC") %>%
+  group_by(Time, ROI) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(5)) %>% 
+  filter(Time >=-250 & Time <= 450) %>% 
+  ggplot(aes(x = Time, y = norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = ROI), alpha = .25)+
+  geom_line(aes(col = ROI),size=1.2)
+
+# build LME timepoint by timepoint
+# timecourse <- c(26,27,28) # for model testing
+
+coef_all <- data.frame()
+for (i in 1:length(timecourse)){
+  CCEP_timepoint <- filter(CCEP_R, Time==timecourse[i], iESsite=="L-DLPFC")
+  m.timepoint <- t.test(CCEP_norm ~ ROI, data = CCEP_timepoint)
+    coef_new <- 
+    m.timepoint[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_all <- bind_rows(coef_all,coef_new)
+}
+coef_all <- coef_all %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef_all$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef_all <- coef_all %>% mutate(corrected_sig = plist_adj)
+
+stats_avh_R <- coef_all %>% 
+mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+```{r right medial}
+# plot CCEP comparison
+filter(CCEP_R_me, iESsite=="L-DLPFC") %>%
+  group_by(Time, ROI) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(3)) %>% 
+  filter(Time >=-250 & Time <= 450) %>% 
+  ggplot(aes(x = Time, y = norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = ROI), alpha = .25)+
+  geom_line(aes(col = ROI),size=1.2)
+
+coef_all <- data.frame()
+for (i in 1:length(timecourse)){
+  CCEP_timepoint <- filter(CCEP_R_me, Time==timecourse[i], iESsite=="L-DLPFC")
+  m.timepoint <- t.test(CCEP_norm ~ ROI, data = CCEP_timepoint)
+    coef_new <- 
+    m.timepoint[c(1,3)] %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_all <- bind_rows(coef_all,coef_new)
+}
+coef_all <- coef_all %>% mutate(sig = ifelse(p.value>0.05, 0, 1))
+
+plist <- coef_all$p.value
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef_all <- coef_all %>% mutate(corrected_sig = plist_adj)
+
+stats_avh_R_me<- coef_all %>% 
+mutate(is_sig = ifelse(corrected_sig < 0.05, 1, 0))
+```
+
+
+
+
+
+
+
+
+

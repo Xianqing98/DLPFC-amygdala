@@ -1,0 +1,360 @@
+---
+title: "Plot iTEP"
+author: "Xianqing"
+date: "3/17/2023"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(readr)
+library(patchwork)
+library(ggsignif)
+library(psych) # load correlation
+library(RColorBrewer)#color
+figDir = "/Users/xianqing/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/1_Figures"
+setwd(figDir)
+```
+
+```{r waveform whole hipp SDchange and itep}
+# LDLPFC
+normwave_hipp <- TEP_hipp_avg %>% 
+  group_by(Time, Condition) %>%
+  summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(42)) %>% 
+  filter(Condition != "fake" & Time >=-250 & Time <= 500)
+
+normwave_hipp_L <- TEP_hipp_avg %>% 
+  filter(DKT == "Left-Hippocampus" & Condition != "fake" & Time >=-250 & Time <= 500) %>%
+  group_by(Time, Condition) %>% 
+  summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(20)) 
+
+normwave_hipp_R <- TEP_hipp_avg %>% 
+  filter(DKT == "Right-Hippocampus" & Condition != "fake" & Time >=-250 & Time <= 500) %>%
+  group_by(Time, Condition) %>%
+  summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(22))
+
+# RPArietal
+normwave_hipp <- TEP_hipp_avg %>% 
+  group_by(Time, Condition) %>%
+  summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(24)) %>% 
+  filter(Condition != "fake" & Time >=-250 & Time <= 500)
+
+normwave_hipp_L <- TEP_hipp_avg %>% 
+  filter(DKT == "Left-Hippocampus" & Condition != "fake" & Time >=-250 & Time <= 500) %>%
+  group_by(Time, Condition) %>% 
+  summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(6)) 
+
+normwave_hipp_R <- TEP_hipp_avg %>% 
+  filter(DKT == "Right-Hippocampus" & Condition != "fake" & Time >=-250 & Time <= 500) %>%
+  group_by(Time, Condition) %>%
+  summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(18))
+
+
+
+# normwave_hipp_pos <- TEP_hipp_avg %>% 
+#   filter(is_ant == 0 & Condition != "fake" & Time <= 500 & Time >= -250) %>% 
+#   group_by(Condition, Time) %>% 
+#   summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(14)) 
+# 
+# normwave_hipp_pos_L <- TEP_hipp_avg %>% filter(is_ant == 0 & DKT == "Left-Hippocampus" & Time <= 500 & Time >= -250) %>% 
+#   group_by(Condition, Time) %>% summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(11)) 
+# 
+# normwave_hipp_pos_R <- TEP_hipp_avg %>% filter(is_ant == 0 & DKT == "Right-Hippocampus" & Time <= 500 & Time >= -250) %>% 
+#   group_by(Condition, Time) %>% summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(3)) 
+# 
+# normwave_hipp_ant <- TEP_hipp_avg %>% 
+#   filter(is_ant == 1 & DKT == "Left-Hippocampus" & Condition != "fake" & Time <= 500 & Time >= -250) %>% 
+#   group_by(Condition, Time) %>% 
+#   summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(28)) 
+# 
+# normwave_hipp_ant_L <- TEP_hipp_avg %>% filter(is_ant == 1 & Condition != "fake" & Time <= 500 & Time >= -250) %>% 
+#   group_by(Condition, Time) %>% summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(9)) 
+# 
+# normwave_hipp_ant_R <- TEP_hipp_avg %>% filter(is_ant == 1 & DKT == "Right-Hippocampus" & Time <= 500 & Time >= -250) %>% 
+#   group_by(Condition, Time) %>% summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(19)) 
+```
+
+```{r}
+# normwave_hipp <- normwave_hipp %>% mutate(subdivision = "Whole")
+# normwave_hipp_pos <- normwave_hipp_pos %>% mutate(subdivision = "Medial")
+# normwave_hipp_ant <- normwave_hipp_ant %>% mutate(subdivision = "Lateral")
+# normwave_bi <- rbind(normwave_hipp, normwave_hipp_pos, normwave_hipp_ant)
+# normwave_bi$subdivision <- paste(normwave_bi$subdivision, normwave_bi$Condition, sep = " ")
+
+p.norm_bi <- normwave_hipp %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, size = .4, col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, alpha =Condition), fill = "gray30")+
+  geom_line(aes(linetype = Condition, size=Condition), col = "gray30")+
+  scale_size_manual(values=c(1,0.7))+
+  scale_alpha_manual(values=c(.17,.15))+
+  annotate("rect", xmin=-13, xmax=27, ymin=-6, ymax=6.2, fill="white")+
+  annotate("rect", xmin=-13, xmax=27, ymin=-2.5, ymax=2.5, fill="gray")+
+  scale_y_continuous(limits=c(-6,6.2), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-250,500), breaks = c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+ylab("Amplitude (SD)")+ 
+  ggtitle("Bilateral hipp = 42")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.6))+
+  theme(axis.ticks=element_line(color="black",size=.6,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  # theme(legend.text = element_text(color = "black", size = rel(1.5)),
+  # legend.position=c(0.2,0.3))+labs(fill="",col="",linetype ="")
+  theme(legend.position="none")
+p.norm_bi
+
+# RParietal
+p.norm_bi <- normwave_hipp %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, size = .4, col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, alpha =Condition), fill = "gray30")+
+  geom_line(aes(linetype = Condition, size=Condition), col = "gray30")+
+  scale_size_manual(values=c(1,0.7))+
+  scale_alpha_manual(values=c(.17,0))+
+  annotate("rect", xmin=-13, xmax=27, ymin=-6, ymax=6.2, fill="white")+
+  annotate("rect", xmin=-13, xmax=27, ymin=-2.5, ymax=2.5, fill="gray")+
+  scale_y_continuous(limits=c(-6,6.2), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-250,500), breaks = c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+ylab("Amplitude (SD)")+ 
+  ggtitle("Bilateral hipp = 24")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.6))+
+  theme(axis.ticks=element_line(color="black",size=.6,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  # theme(legend.text = element_text(color = "black", size = rel(1.5)),
+  # legend.position=c(0.2,0.3))+labs(fill="",col="",linetype ="")
+  theme(legend.position="none")
+p.norm_bi
+
+
+```
+
+```{r}
+# normwave_hipp_L <- normwave_hipp_L %>% mutate(subdivision = "Whole")
+# normwave_hipp_pos_L <- normwave_hipp_pos_L %>% mutate(subdivision = "Medial")
+# normwave_hipp_ant_L <- normwave_hipp_ant_L %>% mutate(subdivision = "Lateral")
+# normwave_L <- rbind(normwave_hipp_L, normwave_hipp_pos_L, normwave_hipp_ant_L)
+# normwave_L$subdivision <- paste(normwave_L$subdivision, normwave_L$Condition, sep = " ")
+
+p.norm_L <- normwave_hipp_L %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, size = .4, col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, alpha =Condition), fill = "gray30")+
+  geom_line(aes(linetype = Condition, size=Condition), col = "gray30")+
+  scale_size_manual(values=c(1,0.7))+
+  scale_alpha_manual(values=c(.17,.15))+
+  annotate("rect", xmin=-13, xmax=27, ymin=-6, ymax=6.2, fill="white")+
+  annotate("rect", xmin=-13, xmax=27, ymin=-2.5, ymax=2.5, fill="gray")+
+  scale_y_continuous(limits=c(-6,6.2), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-250,500), breaks = c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+ylab("Amplitude (SD)")+ 
+  ggtitle("Left hipp = 20")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.6))+
+  theme(axis.ticks=element_line(color="black",size=.6,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  # theme(legend.text = element_text(color = "black", size = rel(1.5)),
+  # legend.position=c(0.2,0.3))+labs(fill="",col="",linetype ="")
+  theme(legend.position="none")
+p.norm_L
+```
+
+```{r}
+# normwave_hipp_R <- normwave_hipp_R %>% mutate(subdivision = "Whole")
+# normwave_hipp_pos_R <- normwave_hipp_pos_R %>% mutate(subdivision = "Medial")
+# normwave_hipp_ant_R <- normwave_hipp_ant_R %>% mutate(subdivision = "Lateral")
+# normwave_R <- rbind(normwave_hipp_R, normwave_hipp_pos_R, normwave_hipp_ant_R)
+# normwave_R$subdivision <- paste(normwave_R$subdivision, normwave_R$Condition, sep = " ")
+
+p.norm_R <- normwave_hipp_R %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, size = .4, col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, alpha =Condition), fill = "gray30")+
+  geom_line(aes(linetype = Condition, size=Condition), col = "gray30")+
+  scale_size_manual(values=c(1,0.7))+
+  scale_alpha_manual(values=c(.17,.15))+
+  annotate("rect", xmin=305, xmax=331, ymin=5.5, ymax=5.8, fill="gray40")+
+  annotate("rect", xmin=-13, xmax=27, ymin=-6, ymax=6.2, fill="white")+
+  annotate("rect", xmin=-13, xmax=27, ymin=-2.5, ymax=2.5, fill="gray")+
+  scale_y_continuous(limits=c(-6,6.2), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-250,500), breaks = c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+ylab("Amplitude (SD)")+ 
+  ggtitle("Right hipp = 22")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.6))+
+  theme(axis.ticks=element_line(color="black",size=.6,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  # theme(legend.text = element_text(color = "black", size = rel(1.5)),
+  # legend.position=c(0.2,0.3))+labs(fill="",col="",linetype ="")
+  theme(legend.position="none")
+p.norm_R
+```
+
+
+```{r}
+figDir = "/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/1_Figures"
+setwd(figDir)
+filename <- "iTEP_R-Parietal_2hp_detrend500_FDR.pdf"
+pdf(file = filename, height = 4.4, width = 5.8)
+p.norm_bi
+p.norm_L
+p.norm_R
+dev.off()
+
+filename <- "iTEP_R-Parietal_2hp_detrend500_Hipp_cluster.pdf"
+pdf(file = filename, height = 4.4, width = 5.8)
+p.norm_bi
+dev.off()
+```
+
+
+```{r Both}
+# load("~/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/3_ProcessedData_Backup/RData_iTEP/iTEP_csv_L-DLPFC_amy/iTEP_L_DLPFC_2hp_detrend500.RData")
+normwave_avh_B <- rbind(normwave_amy, normwave_amy_me, normwave_amy_la) %>% mutate(ROI = "Amygdala") %>% filter(Condition == "tms")
+normwave_hipp <- normwave_hipp %>% mutate(subdivision = "Whole", ROI = "Hippocampus") %>% filter(Condition == "tms")
+normwave_avh_B <- rbind(normwave_avh_B, normwave_hipp)
+normwave_avh_B$subdivision <- paste(normwave_avh_B$subdivision, normwave_avh_B$ROI, sep = " ") 
+normwave_avh_B$subdivision <- factor(normwave_avh_B$subdivision, levels=c("Whole Hippocampus","Lateral Amygdala","Medial Amygdala","Whole Amygdala"))
+normwave_avh_B$ROI <- factor(normwave_avh_B$ROI, levels=c("Amygdala","Hippocampus"))
+
+
+p.norm_avh_B <- normwave_avh_B %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0,  size = .8, col = "gray", alpha = .5)+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = subdivision, alpha = ROI))+
+  # geom_line(aes(col = subdivision, linetype = Condition),size=1.2)+
+  geom_line(aes(col = subdivision, size=ROI))+
+  scale_size_manual(values=c(1,0.7))+
+  scale_alpha_manual(values=c(.17,.15))+
+  # FDR
+  
+  # Cluster
+  # annotate("rect", xmin=50, xmax=97, ymin=5.9, ymax=6.2, fill="dodgerblue3", alpha = 0.6)+
+  annotate("rect", xmin=128, xmax=223, ymin=5.9, ymax=6.2, fill="dodgerblue3")+
+  annotate("rect", xmin=309, xmax=369, ymin=5.9, ymax=6.2, fill="dodgerblue3")+
+  annotate("rect", xmin=46, xmax=111, ymin=5.5, ymax=5.8, fill="green4")+
+  annotate("rect", xmin=131, xmax=228, ymin=5.5, ymax=5.8, fill="green4")+
+  annotate("rect", xmin=311, xmax=365, ymin=5.5, ymax=5.8, fill="green4")+
+  annotate("rect", xmin=129, xmax=185, ymin=5.1, ymax=5.4, fill="maroon3")+
+  
+  annotate("rect", xmin=-13, xmax=27, ymin=-6, ymax=6.2, fill="white")+
+  annotate("rect", xmin=-13, xmax=27, ymin=-2.5, ymax=2.5, fill="gray")+
+  scale_color_manual(values=c("gray30","maroon3","green4","dodgerblue3"))+
+  scale_fill_manual(values=c("gray30","maroon3","green4","dodgerblue3"))+
+  scale_y_continuous(limits=c(-6,6.2), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-250,500), breaks = c(-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+ylab("Amplitude (SD)")+ 
+  ggtitle("Bilateral AMY = 11(5/6) vs HIPP = 13")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.6))+
+  theme(axis.ticks=element_line(color="black",size=.6,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position="none")
+p.norm_avh_B
+
+```
+
+```{r Left}
+normwave_amy_me_L <- normwave_amy_me_L %>% mutate(subdivision = "Medial")
+normwave_amy_la_L <- normwave_amy_la_L %>% mutate(subdivision = "Lateral")
+normwave_avh_L <- rbind(normwave_amy_L, normwave_amy_me_L, normwave_amy_la_L) %>% mutate(ROI = "Amygdala") %>% filter(Condition == "tms")
+normwave_hipp_L <- normwave_hipp_L %>% mutate(subdivision = "Whole", ROI = "Hippocampus") %>% filter(Condition == "tms")
+normwave_avh_L <- rbind(normwave_avh_L, normwave_hipp_L)
+normwave_avh_L$subdivision <- paste(normwave_avh_L$subdivision, normwave_avh_L$ROI, sep = " ") 
+normwave_avh_L$subdivision <- factor(normwave_avh_L$subdivision, levels=c("Whole Hippocampus","Lateral Amygdala","Medial Amygdala","Whole Amygdala"))
+normwave_avh_L$ROI <- factor(normwave_avh_L$ROI, levels=c("Amygdala","Hippocampus"))
+
+p.norm_avh_L <- normwave_avh_L %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0,  size = .8, col = "gray", alpha = .5)+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = subdivision, alpha = ROI))+
+  # geom_line(aes(col = subdivision, linetype = Condition),size=1.2)+
+  geom_line(aes(col = subdivision, size=ROI))+
+  scale_size_manual(values=c(1,0.7))+
+  scale_alpha_manual(values=c(.17,.15))+
+  # FDR
+  
+  # Cluster
+  annotate("rect", xmin=135, xmax=196, ymin=5.9, ymax=6.2, fill="dodgerblue3")+
+  annotate("rect", xmin=128, xmax=231, ymin=5.5, ymax=5.8, fill="green4")+
+  
+  annotate("rect", xmin=-13, xmax=27, ymin=-6, ymax=6.2, fill="white")+
+  annotate("rect", xmin=-13, xmax=27, ymin=-2.5, ymax=2.5, fill="gray")+
+  scale_color_manual(values=c("gray30","maroon3","green4","dodgerblue3"))+
+  scale_fill_manual(values=c("gray30","maroon3","green4","dodgerblue3"))+
+  scale_y_continuous(limits=c(-6,6.2), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-250,500), breaks = c(-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+ylab("Amplitude (SD)")+ 
+  ggtitle("Bilateral AMY = 11(5/6) vs HIPP = 13")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.6))+
+  theme(axis.ticks=element_line(color="black",size=.6,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position="none")
+p.norm_avh_L
+```
+
+```{r Right}
+normwave_amy_me_R <- normwave_amy_me_R %>% mutate(subdivision = "Medial")
+normwave_amy_la_R <- normwave_amy_la_R %>% mutate(subdivision = "Lateral")
+normwave_avh_R <- rbind(normwave_amy_R, normwave_amy_me_R, normwave_amy_la_R) %>% mutate(ROI = "Amygdala") %>% filter(Condition == "tms")
+normwave_hipp_R <- normwave_hipp_R %>% mutate(subdivision = "Whole", ROI = "Hippocampus") %>% filter(Condition == "tms")
+normwave_avh_R <- rbind(normwave_avh_R, normwave_hipp_R)
+normwave_avh_R$subdivision <- paste(normwave_avh_R$subdivision, normwave_avh_R$ROI, sep = " ") 
+normwave_avh_R$subdivision <- factor(normwave_avh_R$subdivision, levels=c("Whole Hippocampus","Lateral Amygdala","Medial Amygdala","Whole Amygdala"))
+normwave_avh_R$ROI <- factor(normwave_avh_R$ROI, levels=c("Amygdala","Hippocampus"))
+
+p.norm_avh_R <- normwave_avh_R %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0,  size = .8, col = "gray", alpha = .5)+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = subdivision, alpha = ROI))+
+  # geom_line(aes(col = subdivision, linetype = Condition),size=1.2)+
+  geom_line(aes(col = subdivision, size=ROI))+
+  scale_size_manual(values=c(1,0.7))+
+  scale_alpha_manual(values=c(.17,.15))+
+  # FDR
+  
+  # Cluster
+  annotate("rect", xmin=134, xmax=208, ymin=5.9, ymax=6.2, fill="dodgerblue3")+
+  annotate("rect", xmin=308, xmax=369, ymin=5.9, ymax=6.2, fill="dodgerblue3")+
+  annotate("rect", xmin=47, xmax=111, ymin=5.5, ymax=5.8, fill="green4")+
+  annotate("rect", xmin=141, xmax=216, ymin=5.5, ymax=5.8, fill="green4")+
+  annotate("rect", xmin=309, xmax=367, ymin=5.5, ymax=5.8, fill="green4")+
+
+  
+  annotate("rect", xmin=-13, xmax=27, ymin=-6, ymax=6.2, fill="white")+
+  annotate("rect", xmin=-13, xmax=27, ymin=-2.5, ymax=2.5, fill="gray")+
+  scale_color_manual(values=c("gray30","maroon3","green4","dodgerblue3"))+
+  scale_fill_manual(values=c("gray30","maroon3","green4","dodgerblue3"))+
+  scale_y_continuous(limits=c(-6,6.2), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-250,500), breaks = c(-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+ylab("Amplitude (SD)")+ 
+  ggtitle("Bilateral AMY = 11(5/6) vs HIPP = 13")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.6))+
+  theme(axis.ticks=element_line(color="black",size=.6,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position="none")
+p.norm_avh_R
+```
+
+```{r}
+figDir = "/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/1_Figures"
+setwd(figDir)
+filename <- "iTEP_avh_Cluster.pdf"
+pdf(file = filename, height = 4.4, width = 5.8)
+p.norm_avh_B
+p.norm_avh_L
+p.norm_avh_R
+dev.off()
+
+
+```

@@ -1,0 +1,438 @@
+---
+title: "Plot EP DLPFC"
+author: "Xianqing"
+date: "3/31/2023"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(readr)
+library(patchwork)
+library(ggsignif)
+library(psych) # load correlation
+library(RColorBrewer)#color
+setwd("C:/Users/xjl19/Desktop/TMS-iEEG/es-TT_Processed")
+# load("C:/Users/xjl19/Desktop/TMS-iEEG/Stanford_Processed/TEP/iTEP_all.RData")
+figDir = "/Users/xianqing/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/1_Figures"
+setwd(figDir)
+```
+
+```{r waveform whole AMY SDchange and EP}
+SDwave_amy <- CCEP_amy_avg %>% group_by(Time) %>%
+  summarise(SD = mean(SDchange), se = sd(SDchange)/sqrt(11)) 
+p.SD_amy <- SDwave_amy %>% ggplot(aes(Time, SD))+
+  geom_ribbon(aes(ymin=SD-se, ymax=SD+se), fill = "dodgerblue3", alpha = .25)+
+  geom_line(col = "dodgerblue3",size=1.2)+
+  # annotate("rect", xmin=32, xmax=74, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # annotate("rect", xmin=108, xmax=154, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # annotate("rect", xmin=178, xmax=256, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # annotate("rect", xmin=364, xmax=415, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # cleaned
+  annotate("rect", xmin=40, xmax=73, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=110, xmax=152, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=182, xmax=264, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=367, xmax=408, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=446, xmax=450, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=-8, xmax=9, ymin=0, ymax=2.3, fill="gray")+
+  scale_x_continuous(limits=c(-150,500), breaks = c(-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylim(-1,8)+
+  ylab("Absolute amplitude (SD)")+ ggtitle("AMY  n = 11")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.SD_amy
+
+normwave_amy <- CCEP_amy_avg %>% group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(11))
+p.norm_amy <- normwave_amy %>% ggplot(aes(Time, norm))+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se), fill = "dodgerblue3", alpha = .25)+
+  geom_line(col = "dodgerblue3",size=1.2)+
+  # all
+  # annotate("rect", xmin=126, xmax=167, ymin=7.8, ymax=8.2, fill="dodgerblue3")+
+  # annotate("rect", xmin=372, xmax=384, ymin=7.8, ymax=8.2, fill="dodgerblue3")+
+  
+  # cleaned
+  annotate("rect", xmin=123, xmax=166, ymin=7.8, ymax=8.2, fill="dodgerblue3")+
+  annotate("rect", xmin=256, xmax=272, ymin=7.8, ymax=8.2, fill="dodgerblue3")+
+  annotate("rect", xmin=370, xmax=421, ymin=7.8, ymax=8.2, fill="dodgerblue3")+
+  
+  geom_hline(yintercept=0, linetype="dotted", size = .8, col = "darkgray")+
+  annotate("rect", xmin=-8, xmax=9, ymin=-1.5, ymax=1.5, fill="gray")+
+  scale_y_continuous(limits=c(-6.5,8.2), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-150,500), breaks = c(-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Amplitude (SD)")+ ggtitle("AMY  n = 11")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.norm_amy
+
+# Save pdf
+filename <- "CCEP_L-DLPFC_AMY_bi.pdf"
+pdf(file = filename, height = 5, width = 9)
+p.norm_amy
+dev.off()
+
+filename <- "CCEP_L-DLPFC_AMY_sub.pdf"
+pdf(file = filename, height = 4.5, width = 5)
+p.norm_amy_L
+p.norm_amy_R
+p.norm_amy_me
+p.norm_amy_la
+dev.off()
+
+
+p.SD_amy
+p.SD_amy_L
+p.SD_amy_R
+p.SD_amy_me
+p.SD_amy_la
+```
+
+```{r waveform left AMY SDchange and EP}
+SDwave_amy_L <- filter(CCEP_amy_avg, DKT == "Left-Amygdala") %>% group_by(Time) %>%
+  summarise(SD = mean(SDchange), se = sd(SDchange)/sqrt(7)) 
+p.SD_amy_L <- SDwave_amy_L %>% ggplot(aes(Time, SD))+
+  geom_ribbon(aes(ymin=SD-se, ymax=SD+se), fill = "dodgerblue3", alpha = .25)+
+  geom_line(col = "dodgerblue3",size=1.2)+
+  # annotate("rect", xmin=34, xmax=72, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # annotate("rect", xmin=112, xmax=124, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # annotate("rect", xmin=135, xmax=148, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # cleaned
+  annotate("rect", xmin=49, xmax=64, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=134, xmax=146, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=197, xmax=216, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=-8, xmax=9, ymin=0, ymax=2.8, fill="gray")+
+  ylim(-1,8)+
+  scale_x_continuous(limits=c(-150,500), breaks = c(-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Absolute amplitude (SD)")+ ggtitle("AMY Left  n = 7")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.SD_amy_L
+
+normwave_amy_L <- filter(CCEP_amy_avg, DKT == "Left-Amygdala") %>% group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(7))
+p.norm_amy_L <- normwave_amy_L %>% ggplot(aes(Time, norm))+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se), fill = "dodgerblue3", alpha = .25)+
+  geom_line(col = "dodgerblue3",size=1.2)+
+
+  geom_hline(yintercept=0, linetype="dotted", size = .8, col = "darkgray")+
+  annotate("rect", xmin=-8, xmax=9, ymin=-2.5, ymax=1.5, fill="gray")+
+  scale_y_continuous(limits=c(-6.5,8.2), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-150,500), breaks = c(-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Amplitude (SD)")+ ggtitle("AMY Left  n = 7")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.norm_amy_L
+
+```
+
+
+```{r waveform Right AMY SDchange and EP}
+SDwave_amy_R <- filter(CCEP_amy_avg, DKT == "Right-Amygdala") %>% group_by(Time) %>%
+  summarise(SD = mean(SDchange), se = sd(SDchange)/sqrt(4)) 
+p.SD_amy_R <- SDwave_amy_R %>% ggplot(aes(Time, SD))+
+  geom_ribbon(aes(ymin=SD-se, ymax=SD+se), fill = "dodgerblue3", alpha = .25)+
+  geom_line(col = "dodgerblue3",size=1.2)+
+  # annotate("rect", xmin=124, xmax=142, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # annotate("rect", xmin=239, xmax=256, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # annotate("rect", xmin=385, xmax=404, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  #cleaned
+  annotate("rect", xmin=124, xmax=147, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=239, xmax=255, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=385, xmax=403, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=-8, xmax=9, ymin=0, ymax=2.8, fill="gray")+
+  ylim(-1,8)+
+  scale_x_continuous(limits=c(-150,500), breaks = c(-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Absolute amplitude (SD)")+ ggtitle("AMY Right  n = 4")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.SD_amy_R
+
+normwave_amy_R <- filter(CCEP_amy_avg, DKT == "Right-Amygdala") %>% group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(4))
+p.norm_amy_R <- normwave_amy_R %>% ggplot(aes(Time, norm))+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se), fill = "dodgerblue3", alpha = .25)+
+  geom_line(col = "dodgerblue3",size=1.2)+
+  # annotate("rect", xmin=121, xmax=152, ymin=7.8, ymax=8.2, fill="dodgerblue3")+
+  # annotate("rect", xmin=232, xmax=258, ymin=7.8, ymax=8.2, fill="dodgerblue3")+
+  # annotate("rect", xmin=375, xmax=407, ymin=7.8, ymax=8.2, fill="dodgerblue3")+
+  #cleaned
+  annotate("rect", xmin=121, xmax=151, ymin=7.8, ymax=8.2, fill="dodgerblue3")+
+  annotate("rect", xmin=232, xmax=257, ymin=7.8, ymax=8.2, fill="dodgerblue3")+
+  annotate("rect", xmin=375, xmax=406, ymin=7.8, ymax=8.2, fill="dodgerblue3")+
+  geom_hline(yintercept=0, linetype="dotted", size = .8, col = "darkgray")+
+  annotate("rect", xmin=-8, xmax=9, ymin=-2, ymax=2.25, fill="gray")+
+  scale_y_continuous(limits=c(-6.5,8.2), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-150,500), breaks = c(-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Amplitude (SD)")+ ggtitle("AMY Right  n = 4")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.norm_amy_R
+```
+
+
+```{r waveform Medial AMY SDchange and EP}
+SDwave_amy_me <- filter(CCEP_amy_avg, is_lateral == 0) %>% group_by(Time) %>%
+  summarise(SD = mean(SDchange), se = sd(SDchange)/sqrt(5)) 
+p.SD_amy_me <- SDwave_amy_me %>% ggplot(aes(Time, SD))+
+  geom_ribbon(aes(ymin=SD-se, ymax=SD+se), fill = "purple4", alpha = .25)+
+  geom_line(col = "purple4",size=1.2)+
+  # annotate("rect", xmin=124, xmax=148, ymin=7.75, ymax=8, fill="purple4")+
+  # annotate("rect", xmin=233, xmax=255, ymin=7.75, ymax=8, fill="purple4")+
+  # annotate("rect", xmin=395, xmax=409, ymin=7.75, ymax=8, fill="purple4")+
+  # cleaned
+  annotate("rect", xmin=125, xmax=146, ymin=7.75, ymax=8, fill="purple4")+
+  annotate("rect", xmin=372, xmax=405, ymin=7.75, ymax=8, fill="purple4")+
+  annotate("rect", xmin=-8, xmax=9, ymin=0, ymax=2.8, fill="gray")+
+  ylim(-1,8)+
+  scale_x_continuous(limits=c(-150,500), breaks = c(-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Absolute amplitude (SD)")+ ggtitle("AMY Medial  n = 5")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.SD_amy_me
+
+normwave_amy_me <- filter(CCEP_amy_avg, is_lateral == 0) %>% group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(5))
+p.norm_amy_me <- normwave_amy_me %>% ggplot(aes(Time, norm))+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se), fill = "purple4", alpha = .25)+
+  geom_line(col = "purple4",size=1.2)+
+  # annotate("rect", xmin=231, xmax=259, ymin=7.8, ymax=8.2, fill="purple4")+
+  # annotate("rect", xmin=365, xmax=394, ymin=7.8, ymax=8.2, fill="purple4")+
+  # cleaned
+  annotate("rect", xmin=244, xmax=256, ymin=7.8, ymax=8.2, fill="purple4")+
+  annotate("rect", xmin=367, xmax=408, ymin=7.8, ymax=8.2, fill="purple4")+
+  geom_hline(yintercept=0, linetype="dotted", size = .8, col = "darkgray")+
+  annotate("rect", xmin=-8, xmax=9, ymin=-2.5, ymax=1.7, fill="gray")+
+  scale_y_continuous(limits=c(-6.5,8.2), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-150,500), breaks = c(-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Amplitude (SD)")+ ggtitle("AMY Medial  n = 5")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.norm_amy_me
+
+```
+
+
+```{r waveform Lateral AMY SDchange and EP}
+SDwave_amy_la <- filter(CCEP_amy_avg, is_lateral == 1) %>% group_by(Time) %>%
+  summarise(SD = mean(SDchange), se = sd(SDchange)/sqrt(6)) 
+p.SD_amy_la <- SDwave_amy_la %>% ggplot(aes(Time, SD))+
+  geom_ribbon(aes(ymin=SD-se, ymax=SD+se), fill = "maroon3", alpha = .25)+
+  geom_line(col = "maroon3",size=1.2)+
+  # annotate("rect", xmin=34, xmax=75, ymin=7.75, ymax=8, fill="maroon3")+
+  # annotate("rect", xmin=111, xmax=124, ymin=7.75, ymax=8, fill="maroon3")+
+  # annotate("rect", xmin=135, xmax=148, ymin=7.75, ymax=8, fill="maroon3")+
+  # annotate("rect", xmin=197, xmax=215, ymin=7.75, ymax=8, fill="maroon3")+
+  #cleaned
+  annotate("rect", xmin=40, xmax=84, ymin=7.75, ymax=8, fill="maroon3")+
+  annotate("rect", xmin=135, xmax=146, ymin=7.75, ymax=8, fill="maroon3")+
+  annotate("rect", xmin=197, xmax=216, ymin=7.75, ymax=8, fill="maroon3")+
+  annotate("rect", xmin=-8, xmax=9, ymin=0, ymax=2.8, fill="gray")+
+  ylim(-1,8)+
+  scale_x_continuous(limits=c(-150,500), breaks = c(-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Absolute amplitude (SD)")+ ggtitle("AMY Lateral  n = 6")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.SD_amy_la
+
+normwave_amy_la <- filter(CCEP_amy_avg, is_lateral == 1) %>% group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(6))
+p.norm_amy_la <- normwave_amy_la %>% ggplot(aes(Time, norm))+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se), fill = "maroon3", alpha = .25)+
+  geom_line(col = "maroon3",size=1.2)+
+  geom_hline(yintercept=0, linetype="dotted", size = .8, col = "darkgray")+
+  annotate("rect", xmin=-8, xmax=9, ymin=-2.2, ymax=2.25, fill="gray")+
+  scale_y_continuous(limits=c(-6.5,8.2), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-150,500), breaks = c(-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Amplitude (SD)")+ ggtitle("AMY Lateral  n = 6")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.norm_amy_la
+
+```
+
+```{r}
+normwave_amy_me_L <- 
+  filter(CCEP_amy_avg, is_lateral == 0 & DKT == "Left-Amygdala") %>% 
+  group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = 0)
+normwave_amy_me_R <- 
+  filter(CCEP_amy_avg, is_lateral == 0 & DKT == "Right-Amygdala") %>% 
+  group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(4))
+normwave_amy_la_L <- 
+  filter(CCEP_amy_avg, is_lateral == 1 & DKT == "Left-Amygdala") %>% 
+  group_by(Time) %>%
+  summarise(norm = mean(CCEP_norm), se = sd(CCEP_norm)/sqrt(6))
+```
+
+
+```{r}
+normwave_amy <- normwave_amy %>% mutate(subdivision = "Whole")
+normwave_amy_me <- normwave_amy_me %>% mutate(subdivision = "Medial")
+normwave_amy_la <- normwave_amy_la %>% mutate(subdivision = "Lateral")
+normwave_bi <- rbind(normwave_amy, normwave_amy_me, normwave_amy_la)
+normwave_bi$subdivision <- 
+  factor(normwave_bi$subdivision, levels=c("Lateral","Medial","Whole"))
+
+p.norm_bi <- normwave_bi %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, linetype="dotted", size = .8, col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = subdivision), alpha = .2)+
+  geom_line(aes(col = subdivision),size=0.75)+
+  # lateral = 0
+  # medial
+  annotate("rect", xmin=244, xmax=256, ymin=8.2, ymax=8.5, fill="green4")+
+  annotate("rect", xmin=367, xmax=408, ymin=8.2, ymax=8.5, fill="green4")+
+  
+  # whole
+  annotate("rect", xmin=124, xmax=147, ymin=7.7, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=239, xmax=255, ymin=7.7, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=385, xmax=403, ymin=7.7, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=-8, xmax=9, ymin=-2.2, ymax=2.25, fill="gray")+
+  scale_color_manual(values=c("maroon3","green4","dodgerblue3"))+
+  scale_fill_manual(values=c("maroon3","green4","dodgerblue3"))+
+  scale_y_continuous(limits=c(-7.2,9), breaks = c(-5,0,5,10))+
+  scale_x_continuous(limits=c(-120,500), breaks = c(-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+ylab("Amplitude (SD)")+ 
+  ggtitle("Bilateral AMY,  n(medial) = 5,  n(lateral) = 6")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.3)),
+        legend.position=c(0.89,0.16))+labs(fill="",col="")
+p.norm_bi
+```
+
+
+```{r}
+normwave_amy_L <- normwave_amy_L %>% mutate(subdivision = "Whole")
+normwave_amy_me_L <- normwave_amy_me_L %>% mutate(subdivision = "Medial")
+normwave_amy_la_L <- normwave_amy_la_L %>% mutate(subdivision = "Lateral")
+normwave_L <- rbind(normwave_amy_L, normwave_amy_me_L, normwave_amy_la_L)
+normwave_L$subdivision <- 
+  factor(normwave_L$subdivision, levels=c("Lateral","Medial","Whole"))
+
+p.norm_L <- normwave_L %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, linetype="dotted", size = .8, col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = subdivision), alpha = .2)+
+  geom_line(aes(col = subdivision),size=0.75)+
+  # lateral = 0
+  # medial = 0
+  # whole = 0
+  annotate("rect", xmin=-8, xmax=9, ymin=-3, ymax=2.5, fill="gray")+
+  scale_color_manual(values=c("maroon3","green4","dodgerblue3"))+
+  scale_fill_manual(values=c("maroon3","green4","dodgerblue3"))+
+  scale_y_continuous(limits=c(-7.2,9), breaks = c(-5,0,5,10))+
+  scale_x_continuous(limits=c(-120,500), breaks = c(-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+ylab("Amplitude (SD)")+ 
+  ggtitle("Left AMY,  n(medial) = 1,  n(lateral) = 6")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.3)),
+        legend.position=c(0.89,0.16))+labs(fill="",col="")
+p.norm_L
+```
+
+```{r}
+normwave_amy_R <- normwave_amy_R %>% mutate(subdivision = "Whole")
+normwave_amy_me_R <- normwave_amy_me_R %>% mutate(subdivision = "Medial")
+normwave_R <- rbind(normwave_amy_R, normwave_amy_me_R)
+normwave_R$subdivision <- 
+  factor(normwave_R$subdivision, levels=c("Medial","Whole"))
+
+p.norm_R <- normwave_amy_me_R %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, linetype="dotted", size = .8, col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = subdivision), alpha = .22)+
+  geom_line(aes(col = subdivision),size=0.75)+
+  # lateral = 0
+  # medial = 0
+  annotate("rect", xmin=124, xmax=147, ymin=8.2, ymax=8.5, fill="green4")+
+  annotate("rect", xmin=239, xmax=255, ymin=8.2, ymax=8.5, fill="green4")+
+  annotate("rect", xmin=385, xmax=403, ymin=8.2, ymax=8.5, fill="green4")+
+  # whole = 0
+  annotate("rect", xmin=-8, xmax=9, ymin=-3, ymax=2.5, fill="gray")+
+  scale_color_manual(values=c("green4"))+
+  scale_fill_manual(values=c("green4"))+
+  scale_y_continuous(limits=c(-7.2,9), breaks = c(-5,0,5,10))+
+  scale_x_continuous(limits=c(-120,500), breaks = c(-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+ylab("Amplitude (SD)")+ 
+  ggtitle("Right AMY,  n(medial) = 4")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.3)),
+        legend.position=c(0.89,0.1))+labs(fill="",col="")
+p.norm_R
+```
+
+
+```{r}
+filename <- "CCEP_L-DLPFC_AMY_mela.pdf"
+pdf(file = filename, height = 5, width = 6)
+p.norm_bi
+p.norm_L
+p.norm_R
+dev.off()
+```
+

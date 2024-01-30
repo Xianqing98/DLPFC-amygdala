@@ -1,0 +1,1529 @@
+---
+title: "Plot iTEP R-DLPFC"
+author: "Xianqing"
+date: "3/17/2023"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(readr)
+library(patchwork)
+library(ggsignif)
+library(psych) # load correlation
+library(RColorBrewer)#color
+setwd("C:\\Users\\xjl19\\Desktop\\TMS-iEEG\\Stanford_Processed\\TEP")
+load("C:/Users/xjl19/Desktop/TMS-iEEG/Stanford_Processed/TEP/iTEP_new.RData")
+figDir = "C:/Users/xjl19/OneDrive - University of Iowa/1_TMS_iEEG/1_Figures"
+figDir = "/Users/xianqing/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/1_Figures"
+setwd(figDir)
+```
+
+```{r waveform whole AMY SDchange and itep}
+# TEP_amy_avg <- read.csv("TEP_amy_avg.csv")[-1]
+# TEP_amy_avg$Condition <- factor(TEP_amy_avg$Condition, levels = c("tms", "sham", "fake"))
+# TEP_amy_avg$Time <- TEP_amy_avg$Time*1000
+# summary(TEP_amy_avg)
+SDwave_amy <- TEP_amy_avg %>% 
+  filter(Condition != "fake" & Time >=-250 & Time <= 450) %>%
+  group_by(Time,Condition) %>% 
+  summarise(SD = mean(SDchange), se = sd(SDchange)/sqrt(3))
+p.SD_amy <- SDwave_amy %>% ggplot(aes(Time, SD))+
+  geom_ribbon(aes(ymin=SD-se, ymax=SD+se, fill = Condition), alpha = .25)+
+  geom_line(aes(col = Condition),size=1.2)+
+  # all
+  # annotate("rect", xmin=26, xmax=41, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # annotate("rect", xmin=50, xmax=67, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # annotate("rect", xmin=81, xmax=95, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # annotate("rect", xmin=140, xmax=242, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # annotate("rect", xmin=325, xmax=411, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # selected
+  annotate("rect", xmin=48, xmax=96, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=144, xmax=242, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=265, xmax=279, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=327, xmax=419, ymin=7.75, ymax=8, fill="dodgerblue3")+
+
+  annotate("rect", xmin=-10, xmax=25, ymin=-.2, ymax=3, fill="gray")+
+  scale_color_manual(values=c("dodgerblue3","dodgerblue3"),labels=c("TMS","Sham"))+
+  scale_fill_manual(values=c("dodgerblue3","dodgerblue3"),labels=c("TMS","Sham"))+
+  scale_linetype_manual(values=c("straight","dashed"),labels=c("TMS","Sham"))+
+  scale_x_continuous(limits=c(-300,500), breaks = c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylim(-1,8)+
+  ylab("Absolute amplitude (SD)")+ ggtitle("AMY  n = 30")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position=c(0.1,0.95))+
+  labs(fill="",col="")
+p.SD_amy
+
+normwave_amy <- TEP_amy_avg %>% 
+  group_by(Time, Condition) %>%
+  summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(3)) %>% 
+  filter(Condition != "fake" & Time >=-250 & Time <= 450)
+p.norm_amy <- normwave_amy %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, linetype="dotted", col="darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill=Condition), alpha = .2)+
+  geom_line(aes(col = Condition, linetype=Condition),size=1.2)+
+  # all
+  # annotate("rect", xmin=177, xmax=255, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  # selected
+  # annotate("rect", xmin=48, xmax=79, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  # annotate("rect", xmin=189, xmax=267, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  # annotate("rect", xmin=333, xmax=348, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  # annotate("rect", xmin=385, xmax=430, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-2, ymax=2.5, fill="gray")+
+  scale_color_manual(values=c("maroon3","maroon3"),labels=c("TMS","Sham"))+
+  scale_fill_manual(values=c("maroon3","maroon3"),labels=c("TMS","Sham"))+
+  scale_linetype_manual(values=c("solid","dotted"),labels=c("TMS","Sham"))+
+  scale_y_continuous(limits=c(-10,10), breaks = c(-10,-5,0,5,10))+
+  scale_x_continuous(limits=c(-300,500), breaks = c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Amplitude (SD)")+ ggtitle("AMY left lateral  n = 3")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position=c(0.9,0.15))+
+  labs(fill="",col="",linetype="")
+p.norm_amy
+
+# Save pdf
+filename <- "iTEP_L-DLPFC_AMY_bi.pdf"
+pdf(file = filename, height = 5, width = 9)
+p.norm_amy
+dev.off()
+
+filename <- "iTEP_L-DLPFC_AMY_sub.pdf"
+pdf(file = filename, height = 4.5, width = 5.5)
+p.norm_amy_L
+p.norm_amy_R
+p.norm_me
+p.norm_la
+p.norm_me_L 
+p.norm_me_R 
+p.norm_la_L 
+p.norm_la_R 
+dev.off()
+
+filename <- "iTEP_L-DLPFC_AMY_removed.pdf"
+filename <- "iTEP_L-DLPFC_AMY_removed_cleaned.pdf"
+pdf(file = filename, height = 5, width = 8)
+p.norm_amy
+p.norm_amy_L
+p.norm_amy_R
+p.norm_me
+p.norm_la
+p.norm_me_L 
+p.norm_la_L 
+p.norm_me_R 
+p.norm_la_R 
+p.SD_amy
+p.SD_amy_L
+p.SD_amy_R
+p.SD_me
+p.SD_la
+p.SD_me_L 
+p.SD_la_L 
+p.SD_me_R 
+p.SD_la_R 
+dev.off()
+```
+
+```{r plot iTEP components}
+p.components_amy <- normwave_amy %>% filter(Time >=-250 & Time <= 450) %>% 
+  ggplot(aes(Time, norm))+
+  # geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = Condition), alpha = .25)+
+  geom_line(aes(col = Condition),size=1.5)+
+  # stat_summary(aes(col = Condition), geom="line", size=1.2)+
+  geom_vline(xintercept=0.025, linetype="dashed")+
+  geom_vline(xintercept=0.1, linetype="dashed")+
+  geom_vline(xintercept=0.07, linetype="dashed")+
+  geom_vline(xintercept=0.18, linetype="dashed")+
+  geom_vline(xintercept=0.15, linetype="dashed")+
+  geom_vline(xintercept=0.45, linetype="dashed")+
+  annotate("rect", xmin=0.025, xmax=0.1, ymin=1.7, ymax=1.9, fill="orangered3")+
+  annotate("rect", xmin=0.07, xmax=0.18, ymin=-2.7, ymax=-2.5, fill="seagreen4")+
+  annotate("rect", xmin=0.15, xmax=0.45, ymin=1.7, ymax=1.9, fill="dodgerblue4")+
+  # annotate("rect", xmin=.332, xmax=.376, ymin=7.6, ymax=7.8, fill="dodgerblue3")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-.8, ymax=.5, fill="gray")+
+  scale_color_manual(values=c("dodgerblue2","grey"))+
+  ylim(-2.8,2)+
+  ylab("Amplitude (SD)")+ ggtitle("AMY  n = 44")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+  # theme(legend.position = "none")
+p.components_amy
+```
+
+
+```{r plot iTEP with different polarity}
+NP70_amy <- TEP_amy_avg %>% 
+  filter(Condition == "tms" & Time > 0.025 & Time <= 0.100) %>% 
+  group_by(Channel) %>%
+  summarise(meanNP70 = mean(iTEP_norm)) %>% 
+  mutate(NP70 = ifelse(meanNP70 < 0, "N70", "P70"))
+TEP_amy_avg <- TEP_amy_avg %>% left_join(NP70_amy)
+
+N70wave_amy <- TEP_amy_avg %>% 
+  filter(Condition != "fake" & NP70 == "N70") %>% 
+  group_by(Time, Condition) %>%
+  summarise(N70 = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(17))
+  
+p.N70_amy <- N70wave_amy %>% filter(Time > -0.05) %>% 
+  ggplot(aes(Time, N70))+
+  # geom_ribbon(aes(ymin=N70-se, ymax=N70+se, fill = Condition), alpha = .25)+
+  geom_line(aes(col = Condition),size=1.5)+
+  # stat_summary(aes(col = Condition), geom="line", size=1.2)+
+  geom_vline(xintercept=0.025, linetype="dashed", size = 1.2)+
+  geom_vline(xintercept=0.1, linetype="dashed", size = 1.2)+
+  geom_vline(xintercept=0.2, linetype="dashed", size = 1.2)+
+  geom_vline(xintercept=0.45, linetype="dashed", size = 1.2)+
+  annotate("rect", xmin=.03, xmax=.095, ymin=4.5, ymax=5, fill="orangered3")+
+  annotate("rect", xmin=.105, xmax=.195, ymin=4.5, ymax=5, fill="seagreen4")+
+  annotate("rect", xmin=.205, xmax=.445, ymin=4.5, ymax=5, fill="dodgerblue4")+
+  # annotate("rect", xmin=.332, xmax=.376, ymin=7.6, ymax=7.8, fill="dodgerblue3")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-1.5, ymax=1.5, fill="gray")+
+  scale_color_manual(values=c("dodgerblue2","grey"))+
+  # scale_fill_manual(values=c("dodgerblue2","darkgrey"))+
+  ylim(-5,5)+
+  ylab("SD")+ ggtitle("N = 17")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))
+  # theme(legend.position = "none")
+p.N70_amy
+
+P70wave_amy <- TEP_amy_avg %>% 
+  filter(Condition != "fake" & NP70 == "P70") %>% 
+  group_by(Time, Condition) %>%
+  summarise(P70 = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(27))
+  
+p.P70_amy <- P70wave_amy %>% filter(Time > -0.05) %>% 
+  ggplot(aes(Time, P70))+
+  # geom_ribbon(aes(ymin=P70-se, ymax=P70+se, fill = Condition), alpha = .25)+
+  geom_line(aes(col = Condition),size=1.5)+
+  # stat_summary(aes(col = Condition), geom="line", size=1.2)+
+  geom_vline(xintercept=0.025, linetype="dashed", size = 1.2)+
+  geom_vline(xintercept=0.1, linetype="dashed", size = 1.2)+
+  geom_vline(xintercept=0.2, linetype="dashed", size = 1.2)+
+  geom_vline(xintercept=0.45, linetype="dashed", size = 1.2)+
+  annotate("rect", xmin=.03, xmax=.095, ymin=4.5, ymax=5, fill="orangered3")+
+  annotate("rect", xmin=.105, xmax=.195, ymin=4.5, ymax=5, fill="seagreen4")+
+  annotate("rect", xmin=.205, xmax=.445, ymin=4.5, ymax=5, fill="royalblue4")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-1.5, ymax=1.5, fill="gray")+
+  scale_color_manual(values=c("dodgerblue2","gray"))+
+  scale_fill_manual(values=c("dodgerblue3","gray"))+
+  # scale_linetype_manual(values=c("dashed","solid"))+
+  ylim(-5,5)+
+  ylab("SD")+ ggtitle("N = 27")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))
+  # theme(legend.position = "none")
+p.P70_amy
+
+```
+
+
+```{r waveform left AMY}
+SDwave_amy_L <- TEP_amy_avg %>%
+  filter(DKT == "Left-Amygdala" & Condition != "fake" & Time >=-250 & Time <= 450) %>%
+  group_by(Time, Condition) %>% 
+  summarise(SD = mean(SDchange), se = sd(SDchange)/sqrt(8))
+p.SD_amy_L <- SDwave_amy_L %>% ggplot(aes(Time, SD))+
+  geom_ribbon(aes(ymin=SD-se, ymax=SD+se, fill = Condition), alpha = .25)+
+  geom_line(aes(col = Condition),size=1.2)+
+  # all
+  # annotate("rect", xmin=161, xmax=235, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # annotate("rect", xmin=263, xmax=288, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # annotate("rect", xmin=336, xmax=391, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # selected
+  annotate("rect", xmin=204, xmax=219, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=268, xmax=286, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=331, xmax=388, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=394, xmax=403, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=441, xmax=450, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-.2, ymax=3.5, fill="gray")+
+  scale_color_manual(values=c("dodgerblue3","darkgrey"),labels=c("TMS","Sham"))+
+  scale_fill_manual(values=c("dodgerblue3","darkgrey"),labels=c("TMS","Sham"))+
+  scale_x_continuous(limits=c(-300,500), breaks = c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylim(-1,8)+
+  ylab("Absolute amplitude (SD)")+ ggtitle("AMY Left  n = 8")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position=c(0.1,0.95))+
+  labs(fill="",col="")
+p.SD_amy_L
+
+normwave_amy_L <- TEP_amy_avg %>% 
+  filter(DKT == "Left-Amygdala" & Condition != "fake" & Time >=-250 & Time <= 450) %>%
+  group_by(Time, Condition) %>% 
+  summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(8)) 
+p.norm_amy_L <- normwave_amy_L %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = Condition), alpha = .25)+
+  geom_line(aes(col = Condition),size=1.2)+
+  # all
+  # annotate("rect", xmin=280, xmax=325, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  # selected
+  annotate("rect", xmin=283, xmax=303, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-1.15, ymax=1.65, fill="gray")+
+  scale_color_manual(values=c("dodgerblue3","darkgrey"),labels=c("TMS","Sham"))+
+  scale_fill_manual(values=c("dodgerblue3","darkgrey"),labels=c("TMS","Sham"))+
+  scale_y_continuous(limits=c(-5.8,5.8), breaks = c(-5,0,5))+scale_x_continuous(limits=c(-300,500), 
+                                breaks=c(-300,-200,-100,0,100,200,300,400,500))+
+  ylab("Amplitude (SD)")+ ggtitle("AMY Left  n = 8")+theme_classic()+
+  xlab("Time (ms)")+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position=c(0.9,0.15))+labs(fill="",col="")
+p.norm_amy_L
+```
+
+```{r waveform right AMY}
+SDwave_amy_R <- TEP_amy_avg %>% 
+  filter(DKT == "Right-Amygdala" & Condition != "fake" & Time >=-250 & Time <= 450) %>%
+  group_by(Time, Condition) %>%
+  summarise(SD = mean(SDchange), se = sd(SDchange)/sqrt(22))
+p.SD_amy_R <- SDwave_amy_R %>% ggplot(aes(Time, SD))+
+  geom_ribbon(aes(ymin=SD-se, ymax=SD+se, fill = Condition), alpha = .25)+
+  geom_line(aes(col = Condition),size=1.2)+
+  # all
+  # annotate("rect", xmin=26, xmax=44, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # annotate("rect", xmin=48, xmax=65, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # annotate("rect", xmin=83, xmax=98, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # annotate("rect", xmin=140, xmax=203, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # annotate("rect", xmin=329, xmax=379, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # annotate("rect", xmin=390, xmax=410, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  # selected
+  annotate("rect", xmin=28, xmax=40, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=49, xmax=97, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=147, xmax=203, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=229, xmax=238, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=349, xmax=417, ymin=7.75, ymax=8, fill="dodgerblue3")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-.2, ymax=3.5, fill="gray")+
+  scale_color_manual(values=c("dodgerblue3","darkgrey"),labels=c("TMS","Sham"))+
+  scale_fill_manual(values=c("dodgerblue3","darkgrey"),labels=c("TMS","Sham"))+
+  ylim(-1,8)+
+  scale_x_continuous(limits=c(-300,500), breaks = c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Absolute amplitude (SD)")+ ggtitle("AMY Right  n = 22")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position=c(0.1,0.95))+labs(fill="",col="")
+p.SD_amy_R
+
+normwave_amy_R <- TEP_amy_avg %>% 
+  filter(DKT == "Right-Amygdala" & Condition != "fake" & Time >=-250 & Time <= 450) %>%
+  group_by(Time, Condition) %>%
+  summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(22))
+p.norm_amy_R <- normwave_amy_R %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = Condition), alpha = .25)+
+  geom_line(aes(col = Condition),size=1.2)+
+  # all
+  # annotate("rect", xmin=163, xmax=270, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  # selected
+  annotate("rect", xmin=50, xmax=83, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  annotate("rect", xmin=164, xmax=283, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  annotate("rect", xmin=382, xmax=434, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-1.15, ymax=1.65, fill="gray")+
+  scale_color_manual(values=c("dodgerblue3","darkgrey"),labels=c("TMS","Sham"))+
+  scale_fill_manual(values=c("dodgerblue3","darkgrey"),labels=c("TMS","Sham"))+
+  scale_y_continuous(limits=c(-5.8,5.8), breaks = c(-5,0,5))+scale_x_continuous(limits=c(-300,500), 
+                                breaks=c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Amplitude (SD)")+ ggtitle("AMY Right  n = 22")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position=c(0.9,0.15))+labs(fill="",col="")
+p.norm_amy_R
+```
+
+```{r waveform medial}
+SDwave_amy_me <- TEP_amy_avg %>% 
+  filter(is_lateral == 0 & Condition != "fake" & Time <= 450 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% 
+  summarise(SD = mean(SDchange), se = sd(SDchange)/sqrt(18)) 
+p.SD_me <- SDwave_amy_me %>% ggplot(aes(Time, SD))+
+  geom_ribbon(aes(ymin=SD-se, ymax=SD+se, fill = Condition), alpha = .25)+
+  geom_line(aes(col = Condition),size=1.2)+
+  # all
+  # annotate("rect", xmin=26, xmax=38, ymin=7.75, ymax=8, fill="green4")+
+  # annotate("rect", xmin=82, xmax=94, ymin=7.75, ymax=8, fill="green4")+
+  # annotate("rect", xmin=139, xmax=203, ymin=7.75, ymax=8, fill="green4")+
+  # annotate("rect", xmin=263, xmax=275, ymin=7.75, ymax=8, fill="green4")+
+  # annotate("rect", xmin=372, xmax=396, ymin=7.75, ymax=8, fill="green4")+
+  # selected
+  annotate("rect", xmin=35, xmax=67, ymin=7.75, ymax=8, fill="green4")+
+  annotate("rect", xmin=74, xmax=94, ymin=7.75, ymax=8, fill="green4")+
+  annotate("rect", xmin=139, xmax=201, ymin=7.75, ymax=8, fill="green4")+
+  annotate("rect", xmin=210, xmax=241, ymin=7.75, ymax=8, fill="green4")+
+  annotate("rect", xmin=247, xmax=276, ymin=7.75, ymax=8, fill="green4")+
+  annotate("rect", xmin=365, xmax=398, ymin=7.75, ymax=8, fill="green4")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-.1, ymax=3, fill="gray")+
+  scale_color_manual(values=c("green4","darkgrey"),labels=c("TMS","Sham"))+
+  scale_fill_manual(values=c("green4","darkgrey"),labels=c("TMS","Sham"))+
+  ylim(-1,8)+
+  scale_x_continuous(limits=c(-300,500), breaks = c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Absolute amplitude (SD)")+ ggtitle("AMY Medial  n = 18")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position=c(0.1,0.95))+labs(fill="",col="")
+p.SD_me 
+
+normwave_amy_me <- TEP_amy_avg %>% 
+  filter(is_lateral == 0 & Condition != "fake" & Time <= 450 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% 
+  summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(18)) 
+p.norm_me <- normwave_amy_me %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = Condition), alpha = .25)+
+  geom_line(aes(col = Condition),size=1.2)+
+  # all
+  # annotate("rect", xmin=160, xmax=229, ymin=5.5, ymax=5.8, fill="green4")+
+  # annotate("rect", xmin=336, xmax=353, ymin=5.5, ymax=5.8, fill="green4")+
+  # selected
+  annotate("rect", xmin=51, xmax=81, ymin=5.5, ymax=5.8, fill="green4")+
+  annotate("rect", xmin=164, xmax=244, ymin=5.5, ymax=5.8, fill="green4")+
+  annotate("rect", xmin=333, xmax=358, ymin=5.5, ymax=5.8, fill="green4")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-1.5, ymax=1, fill="gray")+
+  scale_color_manual(values=c("green4","darkgrey"),labels=c("TMS","Sham"))+
+  scale_fill_manual(values=c("green4","darkgrey"),labels=c("TMS","Sham"))+
+  scale_y_continuous(limits=c(-5.8,5.8), breaks = c(-5,0,5))+scale_x_continuous(limits=c(-300,500), 
+                                breaks=c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Amplitude (SD)")+ ggtitle("AMY Medial  n = 18")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position=c(0.9,0.15))+labs(fill="",col="")
+p.norm_me 
+```
+
+```{r waveform medial left & right}
+# left
+wave_amy_me_L <- TEP_amy_avg %>% filter(is_lateral == 0 & Condition != "fake" & DKT == "Left-Amygdala" & Time <= 450 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% summarise(SD = mean(SDchange), se = sd(SDchange)/sqrt(3)) 
+p.SD_me_L <- wave_amy_me_L %>%
+  # summarise(SD = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(23)) %>%
+  ggplot(aes(Time, SD))+
+  geom_ribbon(aes(ymin=SD-se, ymax=SD+se, fill = Condition), alpha = .25)+
+  stat_summary(aes(col = Condition), geom="line", size=1.2)+
+  # selected
+  annotate("rect", xmin=79, xmax=100, ymin=7.75, ymax=8, fill="green4")+
+  annotate("rect", xmin=424, xmax=450, ymin=7.75, ymax=8, fill="green4")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-.1, ymax=4, fill="gray")+
+  scale_color_manual(values=c("green4","darkgrey"),labels=c("TMS","Sham"))+
+  scale_fill_manual(values=c("green4","darkgrey"),labels=c("TMS","Sham"))+
+  ylim(-1,8)+
+  scale_x_continuous(limits=c(-300,500), breaks = c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+ylab("Absolute amplitude (SD)")+ 
+  ggtitle("AMY Left medial  n = 3")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position=c(0.1,0.95))+labs(fill="",col="")
+p.SD_me_L 
+
+wave_amy_me_L <- TEP_amy_avg %>% filter(is_lateral == 0 & Condition != "fake" & Time <= 450 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(3)) 
+p.norm_me_L <- wave_amy_me_L %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = Condition), alpha = .25)+
+  stat_summary(aes(col = Condition), geom="line", size=1.2)+
+  annotate("rect", xmin=-10, xmax=25, ymin=-2, ymax=1.5, fill="gray")+
+  scale_color_manual(values=c("green4","darkgrey"),labels=c("TMS","Sham"))+
+  scale_fill_manual(values=c("green4","darkgrey"),labels=c("TMS","Sham"))+
+  scale_y_continuous(limits=c(-5.8,5.8), breaks = c(-5,0,5))+scale_x_continuous(limits=c(-300,500), 
+                                breaks=c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+ ylab("Amplitude (SD)")+ 
+  ggtitle("AMY Left medial  n = 3")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position=c(0.9,0.15))+labs(fill="",col="")
+p.norm_me_L 
+
+# right
+wave_amy_me_R <- TEP_amy_avg %>% filter(is_lateral == 0 & Condition != "fake" & DKT == "Right-Amygdala" & Time <= 450 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% summarise(SD = mean(SDchange), se = sd(SDchange)/sqrt(15)) 
+p.SD_me_R <- wave_amy_me_R %>%
+  ggplot(aes(Time, SD))+
+  geom_ribbon(aes(ymin=SD-se, ymax=SD+se, fill = Condition), alpha = .25)+
+  stat_summary(aes(col = Condition), geom="line", size=1.2)+
+  # cleaned
+  annotate("rect", xmin=33, xmax=99, ymin=7.75, ymax=8, fill="green4")+
+  annotate("rect", xmin=136, xmax=195, ymin=7.75, ymax=8, fill="green4")+
+  annotate("rect", xmin=222, xmax=277, ymin=7.75, ymax=8, fill="green4")+
+  annotate("rect", xmin=367, xmax=398, ymin=7.75, ymax=8, fill="green4")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-.1, ymax=3, fill="gray")+
+  scale_color_manual(values=c("green4","darkgrey"),labels=c("TMS","Sham"))+
+  scale_fill_manual(values=c("green4","darkgrey"),labels=c("TMS","Sham"))+
+  ylim(-1,8)+
+  scale_x_continuous(limits=c(-300,500), breaks = c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Absolute amplitude (SD)")+ ggtitle("AMY Right medial  n = 15")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position=c(0.1,0.95))+labs(fill="",col="")
+p.SD_me_R 
+
+wave_amy_me_R <- TEP_amy_avg %>% filter(is_lateral == 0 & Condition != "fake" & DKT == "Right-Amygdala" & Time <= 450 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(15)) 
+p.norm_me_R <- wave_amy_me_R %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = Condition), alpha = .25)+
+  stat_summary(aes(col = Condition), geom="line", size=1.2)+
+  # selected
+  annotate("rect", xmin=50, xmax=87, ymin=5.5, ymax=5.8, fill="green4")+
+  annotate("rect", xmin=166, xmax=240, ymin=5.5, ymax=5.8, fill="green4")+
+  annotate("rect", xmin=333, xmax=354, ymin=5.5, ymax=5.8, fill="green4")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-1.5, ymax=1, fill="gray")+
+  scale_color_manual(values=c("green4","darkgrey"),labels=c("TMS","Sham"))+
+  scale_fill_manual(values=c("green4","darkgrey"),labels=c("TMS","Sham"))+
+  scale_y_continuous(limits=c(-5.8,5.8), breaks = c(-5,0,5))+scale_x_continuous(limits=c(-300,500), 
+                                breaks=c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Amplitude (SD)")+ ggtitle("AMY Right medial  n = 15")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position=c(0.9,0.15))+labs(fill="",col="")
+p.norm_me_R 
+```
+
+```{r waveform lateral}
+SDwave_amy_la <- TEP_amy_avg %>% 
+  filter(is_lateral == 1 & Condition != "fake" & Time <= 450 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% 
+  summarise(SD = mean(SDchange), se = sd(SDchange)/sqrt(12)) 
+p.SD_la <- SDwave_amy_la %>% ggplot(aes(Time, SD))+
+  geom_ribbon(aes(ymin=SD-se, ymax=SD+se, fill = Condition), alpha = .25)+
+  geom_line(aes(col = Condition),size=1.2)+
+  # all
+  # annotate("rect", xmin=158, xmax=204, ymin=7.75, ymax=8, fill="maroon3")+
+  # annotate("rect", xmin=330, xmax=370, ymin=7.75, ymax=8, fill="maroon3")+
+  # annotate("rect", xmin=393, xmax=410, ymin=7.75, ymax=8, fill="maroon3")+
+  # selected
+  annotate("rect", xmin=181, xmax=205, ymin=7.75, ymax=8, fill="maroon3")+
+  annotate("rect", xmin=315, xmax=382, ymin=7.75, ymax=8, fill="maroon3")+
+  annotate("rect", xmin=388, xmax=414, ymin=7.75, ymax=8, fill="maroon3")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-.2, ymax=3, fill="gray")+
+  scale_color_manual(values=c("maroon3","darkgrey"),labels=c("TMS","Sham"))+
+  scale_fill_manual(values=c("maroon3","darkgrey"),labels=c("TMS","Sham"))+
+  ylim(-1,8)+
+  scale_x_continuous(limits=c(-300,500), breaks = c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Absolute amplitude (SD)")+ ggtitle("AMY lateral  n = 12")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position=c(0.1,0.95))+labs(fill="",col="")
+p.SD_la 
+
+normwave_amy_la <- TEP_amy_avg %>% 
+  filter(is_lateral == 1 & Condition != "fake" & Time <= 450 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(12)) 
+p.norm_la <- normwave_amy_la %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = Condition), alpha = .25)+
+  geom_line(aes(col = Condition),size=1.2)+
+  # all
+  # annotate("rect", xmin=240, xmax=259, ymin=5.5, ymax=5.8, fill="maroon3")+
+  # selected 
+  annotate("rect", xmin=238, xmax=258, ymin=5.5, ymax=5.8, fill="maroon3")+
+  annotate("rect", xmin=403, xmax=435, ymin=5.5, ymax=5.8, fill="maroon3")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-1.5, ymax=1.0, fill="gray")+
+  scale_color_manual(values=c("maroon3","darkgrey"),labels=c("TMS","Sham"))+
+  scale_fill_manual(values=c("maroon3","darkgrey"),labels=c("TMS","Sham"))+
+  scale_y_continuous(limits=c(-5.8,5.8), breaks = c(-5,0,5))+scale_x_continuous(limits=c(-300,500), 
+                                breaks=c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Amplitude (SD)")+ ggtitle("AMY lateral  n = 12")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position=c(0.9,0.15))+labs(fill="",col="")
+p.norm_la 
+```
+
+```{r waveform lateral left & right}
+# left
+wave_amy_la_L <- TEP_amy_avg %>% filter(is_lateral == 1 & Condition != "fake" & DKT == "Left-Amygdala" & Time <= 450 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% summarise(SD = mean(SDchange), se = sd(SDchange)/sqrt(5)) 
+p.SD_la_L <- wave_amy_la_L %>%
+  # summarise(SD = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(23)) %>%
+  ggplot(aes(Time, SD))+
+  geom_ribbon(aes(ymin=SD-se, ymax=SD+se, fill = Condition), alpha = .25)+
+  stat_summary(aes(col = Condition), geom="line", size=1.2)+
+  # cleaned
+  annotate("rect", xmin=260, xmax=287, ymin=7.75, ymax=8, fill="maroon3")+
+  annotate("rect", xmin=325, xmax=402, ymin=7.75, ymax=8, fill="maroon3")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-.1, ymax=2, fill="gray")+
+  scale_color_manual(values=c("maroon3","darkgrey"),labels=c("TMS","Sham"))+
+  scale_fill_manual(values=c("maroon3","darkgrey"),labels=c("TMS","Sham"))+
+  ylim(-1,8)+
+  scale_x_continuous(limits=c(-300,500), breaks = c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Absolute amplitude (SD)")+ ggtitle("AMY Left lateral  n = 5")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position=c(0.1,0.95))+labs(fill="",col="")
+p.SD_la_L 
+
+wave_amy_la_L <- TEP_amy_avg %>% filter(is_lateral == 1 & Condition != "fake" & Time <= 450 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(5)) 
+p.norm_la_L <- wave_amy_la_L %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = Condition), alpha = .25)+
+  stat_summary(aes(col = Condition), geom="line", size=1.2)+
+  # selected 
+  # annotate("rect", xmin=285, xmax=319, ymin=5.5, ymax=5.8, fill="maroon3")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-1.5, ymax=1, fill="gray")+
+  scale_color_manual(values=c("maroon3","darkgrey"),labels=c("TMS","Sham"))+
+  scale_fill_manual(values=c("maroon3","darkgrey"),labels=c("TMS","Sham"))+
+  scale_y_continuous(limits=c(-5.8,5.8), breaks = c(-5,0,5))+scale_x_continuous(limits=c(-300,500), breaks = c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Amplitude (SD)")+ ggtitle("AMY Left lateral  n = 5")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position=c(0.9,0.15))+labs(fill="",col="")
+p.norm_la_L 
+
+# right
+wave_amy_la_R <- TEP_amy_avg %>% filter(is_lateral == 1 & Condition != "fake" & DKT == "Right-Amygdala" & Time <= 450 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% summarise(SD = mean(SDchange), se = sd(SDchange)/sqrt(7)) 
+p.SD_la_R <- wave_amy_la_R %>% ggplot(aes(Time, SD))+
+  geom_ribbon(aes(ymin=SD-se, ymax=SD+se, fill = Condition), alpha = .25)+
+  stat_summary(aes(col = Condition), geom="line", size=1.2)+
+  # cleaned
+  annotate("rect", xmin=319, xmax=356, ymin=7.75, ymax=8, fill="maroon3")+
+  annotate("rect", xmin=396, xmax=407, ymin=7.75, ymax=8, fill="maroon3")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-.1, ymax=3, fill="gray")+
+  scale_color_manual(values=c("maroon3","darkgrey"),labels=c("TMS","Sham"))+
+  scale_fill_manual(values=c("maroon3","darkgrey"),labels=c("TMS","Sham"))+
+  ylim(-1,8)+
+  scale_x_continuous(limits=c(-300,500), breaks = c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Absolute amplitude (SD)")+ ggtitle("AMY Right lateral  n = 7")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position=c(0.1,0.95))+labs(fill="",col="")
+p.SD_la_R 
+
+wave_amy_la_R <- TEP_amy_avg %>% filter(is_lateral == 1 & Condition != "fake" & DKT == "Right-Amygdala" & Time <= 450 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(7)) 
+p.norm_la_R <- wave_amy_la_R %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = Condition), alpha = .25)+
+  stat_summary(aes(col = Condition), geom="line", size=1.2)+
+  # cleaned
+  annotate("rect", xmin=232, xmax=308, ymin=5.5, ymax=5.8, fill="maroon3")+
+  annotate("rect", xmin=387, xmax=434, ymin=5.5, ymax=5.8, fill="maroon3")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-2.2, ymax=1.5, fill="gray")+
+  scale_color_manual(values=c("maroon3","darkgrey"),labels=c("TMS","Sham"))+
+  scale_fill_manual(values=c("maroon3","darkgrey"),labels=c("TMS","Sham"))+
+  scale_y_continuous(limits=c(-5.8,5.8), breaks = c(-5,0,5))+scale_x_continuous(limits=c(-300,500), 
+                                breaks=c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Amplitude (SD)")+ ggtitle("AMY Right lateral  n = 7")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.position=c(0.9,0.15))+labs(fill="",col="")
+p.norm_la_R 
+```
+
+
+```{r p.norm_L}
+normwave_amy <- normwave_amy %>% mutate(subdivision = "Lateral")
+normwave_amy$subdivision <- paste(normwave_amy$subdivision, normwave_amy$Condition, sep = " ")
+normwave_amy$subdivision <- factor(normwave_amy$subdivision, levels = c("Lateral tms", "Lateral sham"))
+
+p.norm_L <- normwave_amy %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, linetype="dotted", size = .8, col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = subdivision), alpha = .17)+
+  # geom_line(aes(col = subdivision, linetype = Condition),size=1.2)+
+  geom_line(aes(col = subdivision, linetype = Condition, size=Condition))+
+  scale_size_manual(values=c(1.2,0.8),labels=c("tms","sham"))+
+  # lateral 
+  annotate("rect", xmin=60, xmax=75, ymin=9.5, ymax=10, fill="maroon3")+
+  annotate("rect", xmin=165, xmax=179, ymin=9.5, ymax=10, fill="maroon3")+
+
+  annotate("rect", xmin=-11, xmax=26, ymin=-1.5, ymax=2.5, fill="gray")+
+  scale_color_manual(values=c("maroon3","maroon3"), labels=c("tms","sham"))+
+  scale_fill_manual(values=c("maroon3","maroon3"), labels=c("tms","sham"))+
+  # scale_linetype_manual(values=c("solid","dashed"),labels=c("TMS","Sham"))+
+  scale_y_continuous(limits=c(-10,10), breaks = c(-10,-5,0,5,10))+
+  scale_x_continuous(limits=c(-300,500), breaks = c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+ylab("Amplitude (SD)")+ 
+  ggtitle("Left AMY, medial = 0, lateral = 3")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)),
+        legend.position=c(0.2,0.2))+labs(fill="",col="",linetype ="",size="")
+  # theme(legend.position="none")
+p.norm_L
+
+```
+
+```{r individual channel L la n=3}
+p.rDPLFC_3 <- TEP_amy %>%
+  filter(Time <= 450 & Time >= -250 & Condition != "fake") %>% 
+  group_by(Channel, Condition, Time) %>%
+  summarise(mean_amplitude = mean(Amplitude), se = sd(Amplitude)/sqrt(40)) %>%
+  ggplot(aes(Time, mean_amplitude))+
+  geom_hline(yintercept=0, linetype="dotted", size = .3, col = "darkgray")+
+  geom_ribbon(aes(ymin=mean_amplitude-se, ymax=mean_amplitude+se, fill=Condition), alpha=.2)+
+  stat_summary(aes(col=Condition,linetype=Condition,size=Condition), geom="line", alpha=.9)+
+  annotate("rect", xmin=-10, xmax=25, ymin=-3, ymax=3, fill="gray")+
+  scale_size_manual(values=c(1.0,0.8))+
+  scale_color_manual(values=c("dodgerblue3","darkgray"))+
+  scale_fill_manual(values=c("dodgerblue3","darkgray"))+
+  ylim(-20,12)+
+  ylab("Amplitude (μV)")+xlab("Time (ms)")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=1))+
+  theme(axis.ticks=element_line(color="black",size=1,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.3)))+
+  theme(axis.title = element_text(color = "black", size = 16))+
+  theme(legend.text = element_text(color = "black", size = 16))+
+  theme(legend.position="none")+
+  facet_wrap(~Channel)
+p.rDPLFC_3
+
+# normalize each channel
+# baseline_amy_idv <- filter(TEP_amy, Time <= -50 & Time >=-250) %>%
+#   group_by(Patient,Condition,Channel,DKT,is_lateral) %>% 
+#   summarise(base_mean = mean(Amplitude), base_sd = sd(Amplitude))
+# TEP_amy_norm <- TEP_amy %>% left_join(baseline_amy_idv) %>% 
+#   mutate(iTEP_norm = (Amplitude - base_mean)/base_sd,
+#          SDchange = abs((Amplitude - base_mean)/base_sd))
+# summary(TEP_amy_norm)
+# 
+# # plot channel by channel
+# TEP_amy_norm %>%
+#   filter(Time <= 450 & Time >= -250) %>% 
+#   group_by(Channel, Condition, Time) %>%
+#   summarise(mean_amplitude = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(40)) %>%
+#   ggplot(aes(Time, mean_amplitude))+
+#   geom_hline(yintercept=0, linetype="dotted", size = .8, col = "darkgray")+
+#   geom_ribbon(aes(ymin=mean_amplitude-se, ymax=mean_amplitude+se, fill = Condition), alpha = .2)+
+#   stat_summary(aes(col=Condition,linetype=Condition,size=Condition), geom="line", alpha = .9)+
+#   scale_size_manual(values=c(1.2,0.8),labels=c("TMS","Sham"))+
+#   annotate("rect", xmin=-10, xmax=25, ymin=-.5, ymax=.5, fill="gray")+
+#   scale_color_manual(values=c("maroon3","maroon3"), labels=c("TMS","Sham"))+
+#   scale_fill_manual(values=c("maroon3","maroon3"), labels=c("TMS","Sham"))+
+#   scale_linetype_manual(values=c("solid","dashed"),labels=c("TMS","Sham"))+
+#   scale_y_continuous(limits=c(-2.2,2), breaks = c(-2,-1,0,1,2))+
+#   scale_x_continuous(limits=c(-300,500), breaks = c(-300,-200,-100,0,100,200,300,400,500))+
+#   ylab("Amplitude (SD)")+xlab("Time (ms)")+theme_classic()+
+#   theme(axis.line=element_line(linetype=1,color="black",size=1))+
+#   theme(axis.ticks=element_line(color="black",size=1,lineend = 12))+
+#   theme(axis.text = element_text(color = "black", size = rel(1.3)))+
+#   theme(axis.title = element_text(color = "black", size = 16))+
+#   theme(legend.text = element_text(color = "black", size = 16))+
+#   theme(legend.position=c(0.1,0.2))+labs(fill="",col="",linetype="",size="")+
+#   facet_wrap(~Channel)
+
+# TEP_amy_avg  <- TEP_amy_norm %>% 
+#   group_by(Patient, Condition, Channel, Time, DKT, is_lateral) %>% 
+#   summarise(iTEP_norm = mean(iTEP_norm))
+
+```
+
+
+```{r save pdf}
+setwd("C:/Users/xjl19/OneDrive - University of Iowa/1_TMS_iEEG/1_Figures")
+filename <- "iTEP_R-DLPFC_AMY_mela.pdf"
+pdf(file = filename, height = 4.5, width = 5.5)
+p.norm_L
+dev.off()
+
+filename <- "iTEP_R-DLPFC_AMY_channels.pdf"
+pdf(file = filename, height = 3.5, width = 8)
+p.rDPLFC_3
+dev.off()
+```
+
+# with/without cutaneous
+
+```{r add cutaneous info}
+normwave_amy <- normwave_amy %>% mutate(cutaneous = "no")
+normwave_amy_L <- normwave_amy_L %>% mutate(cutaneous = "no")
+normwave_amy_R <- normwave_amy_R %>% mutate(cutaneous = "no")
+normwave_amy_me <- normwave_amy_me %>% mutate(cutaneous = "no")
+normwave_amy_la <- normwave_amy_la %>% mutate(cutaneous = "no")
+wave_amy_me_L <- wave_amy_me_L %>% mutate(cutaneous = "no")
+wave_amy_la_L <- wave_amy_la_L %>% mutate(cutaneous = "no")
+wave_amy_me_R <- wave_amy_me_R %>% mutate(cutaneous = "no")
+wave_amy_la_R <- wave_amy_la_R %>% mutate(cutaneous = "no")
+
+normwave_amy_sham2 <- filter(TEP_amy_sham_avg, Condition == "sham2") %>% 
+  group_by(Time, Condition) %>%
+  summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(5)) %>% 
+  filter(Time >=-250 & Time <= 450)
+normwave_amy_sham2_L <- filter(TEP_amy_sham_avg, Condition == "sham2") %>% 
+  filter(DKT == "Left-Amygdala" & Time >=-250 & Time <= 450) %>%
+  group_by(Time, Condition) %>% 
+  summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(3)) 
+normwave_amy_sham2_R <- filter(TEP_amy_sham_avg, Condition == "sham2") %>% 
+  filter(DKT == "Right-Amygdala" & Time >=-250 & Time <= 450) %>%
+  group_by(Time, Condition) %>%
+  summarise(norm = mean(iTEP_norm), se = 0) #2
+normwave_amy_sham2_me <- filter(TEP_amy_sham_avg, Condition == "sham2") %>% 
+  filter(is_lateral == 0 & Time <= 450 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% 
+  summarise(norm = mean(iTEP_norm), se = 0) #1
+normwave_amy_sham2_la <- filter(TEP_amy_sham_avg, Condition == "sham2") %>% 
+  filter(is_lateral == 1 & Time <= 450 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% 
+  summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(4))
+# wave_amy_sham2_me_L <- filter(TEP_amy_sham_avg, Condition == "sham2") %>% 
+#   filter(is_lateral == 0 & DKT == "Left-Amygdala" & Time <= 450 & Time >= -250) %>% 
+#   group_by(Condition, Time) %>% 
+#   summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(12))
+wave_amy_sham2_me_R <- filter(TEP_amy_sham_avg, Condition == "sham2") %>% 
+  filter(is_lateral == 0& DKT == "Right-Amygdala" & Time <= 450 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% 
+  summarise(norm = mean(iTEP_norm), se = 0) #1
+wave_amy_sham2_la_L <- filter(TEP_amy_sham_avg, Condition == "sham2") %>% 
+  filter(is_lateral == 1 & DKT == "Left-Amygdala" & Time <= 450 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% 
+  summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(3)) 
+wave_amy_sham2_la_R <- filter(TEP_amy_sham_avg, Condition == "sham2") %>% 
+  filter(is_lateral == 1 & DKT == "Right-Amygdala" & Time <= 450 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% 
+  summarise(norm = mean(iTEP_norm), se = 0) #1
+
+normwave_amy_sham2 <- 
+  normwave_amy_sham2 %>% mutate(subdivision = "Whole", cutaneous = "yes")
+normwave_amy_sham2_L <- 
+  normwave_amy_sham2_L %>% mutate(subdivision = "Whole", cutaneous = "yes")
+normwave_amy_sham2_R <- 
+  normwave_amy_sham2_R %>% mutate(subdivision = "Whole", cutaneous = "yes")
+normwave_amy_sham2_me <- 
+  normwave_amy_sham2_me %>% mutate(subdivision = "Medial", cutaneous = "yes")
+normwave_amy_sham2_la <- 
+  normwave_amy_sham2_la %>% mutate(subdivision = "Lateral", cutaneous = "yes")
+# wave_amy_sham2_me_L <- 
+#   wave_amy_sham2_me_L %>% mutate(subdivision = "Medial", cutaneous = "yes")
+wave_amy_sham2_la_L <- 
+  wave_amy_sham2_la_L %>% mutate(subdivision = "Lateral", cutaneous = "yes")
+wave_amy_sham2_me_R <- 
+  wave_amy_sham2_me_R %>% mutate(subdivision = "Medial", cutaneous = "yes")
+wave_amy_sham2_la_R <- 
+  wave_amy_sham2_la_R %>% mutate(subdivision = "Lateral", cutaneous = "yes")
+
+normwave_amy_new <- rbind(normwave_amy, normwave_amy_sham2)
+normwave_amy_new_L <- rbind(normwave_amy_L, normwave_amy_sham2_L)
+normwave_amy_new_R <- rbind(normwave_amy_R, normwave_amy_sham2_R)
+normwave_amy_new_me <- rbind(normwave_amy_me, normwave_amy_sham2_me)
+normwave_amy_new_la <- rbind(normwave_amy_la, normwave_amy_sham2_la)
+# wave_amy_new_me_L <- rbind(wave_amy_me_L, wave_amy_sham2_me_L)
+wave_amy_new_la_L <- rbind(wave_amy_la_L, wave_amy_sham2_la_L)
+wave_amy_new_me_R <- rbind(wave_amy_me_R, wave_amy_sham2_me_R)
+wave_amy_new_la_R <- rbind(wave_amy_la_R, wave_amy_sham2_la_R)
+```
+
+```{r bi}
+p.new_norm_amy <- normwave_amy_new %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = Condition), alpha = .25)+
+  geom_line(aes(col = Condition),size=1)+
+  # all
+  # annotate("rect", xmin=177, xmax=255, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  # selected
+  annotate("rect", xmin=48, xmax=79, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  annotate("rect", xmin=189, xmax=267, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  annotate("rect", xmin=333, xmax=348, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  annotate("rect", xmin=385, xmax=430, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  annotate("rect", xmin=147, xmax=172, ymin=5.1, ymax=5.4, fill="gray40")+
+  annotate("rect", xmin=143, xmax=168, ymin=4.7, ymax=5, fill="dodgerblue4")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-1.2, ymax=1.2, fill="gray")+
+  scale_color_manual(values=c("dodgerblue3","darkgrey","gray40"),
+                     labels=c("TMS","Sham","Sham w/ cutaneous"))+
+  scale_fill_manual(values=c("dodgerblue3","darkgrey","gray40"),
+                     labels=c("TMS","Sham","Sham w/ cutaneous"))+
+  scale_y_continuous(limits=c(-5.8,5.8), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-300,500),
+                     breaks=c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Amplitude (SD)")+ ggtitle("AMY  n = 30, cutaneous n = 5")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.title = element_text(color = "black", size = rel(1.5)))+
+  labs(fill="",col="")
+p.new_norm_amy
+
+```
+
+```{r L}
+p.new_norm_amy_L <- normwave_amy_new_L %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = Condition), alpha = .25)+
+  geom_line(aes(col = Condition, linetype = cutaneous),size=1)+
+  # all
+  # annotate("rect", xmin=177, xmax=255, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  # selected
+  annotate("rect", xmin=283, xmax=303, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-1.2, ymax=1.2, fill="gray")+
+  scale_color_manual(values=c("dodgerblue3","darkgrey","darkgrey"),
+                     labels=c("TMS","Sham","Sham2"))+
+  scale_fill_manual(values=c("dodgerblue3","darkgrey","darkgrey"),
+                     labels=c("TMS","Sham","Sham2"))+
+  scale_y_continuous(limits=c(-5.8,5.8), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-300,500),
+                     breaks=c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Amplitude (SD)")+ ggtitle("AMY Left n = 8, cutaneous n = 3")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.title = element_text(color = "black", size = rel(1.5)))+
+  labs(fill="",col="",linetype = "Cutaneous?")
+p.new_norm_amy_L
+```
+
+```{r R}
+p.new_norm_amy_R <- normwave_amy_new_R %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = Condition), alpha = .25)+
+  geom_line(aes(col = Condition, linetype = cutaneous),size=1)+
+  # all
+  # annotate("rect", xmin=177, xmax=255, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  # selected
+  annotate("rect", xmin=50, xmax=83, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  annotate("rect", xmin=164, xmax=283, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  annotate("rect", xmin=382, xmax=434, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-1.2, ymax=1.2, fill="gray")+
+  scale_color_manual(values=c("dodgerblue3","darkgrey","darkgrey"),
+                     labels=c("TMS","Sham","Sham2"))+
+  scale_fill_manual(values=c("dodgerblue3","darkgrey","darkgrey"),
+                     labels=c("TMS","Sham","Sham2"))+
+  scale_y_continuous(limits=c(-5.8,5.8), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-300,500),
+                     breaks=c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Amplitude (SD)")+ ggtitle("AMY Right  n = 22, cutaneous n = 2")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.title = element_text(color = "black", size = rel(1.5)))+
+  labs(fill="",col="",linetype = "Cutaneous?")
+p.new_norm_amy_R
+```
+
+```{r me}
+p.new_norm_amy_me <- normwave_amy_new_me %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = Condition), alpha = .25)+
+  geom_line(aes(col = Condition, linetype = cutaneous),size=1)+
+  # all
+  # annotate("rect", xmin=177, xmax=255, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  # selected
+  annotate("rect", xmin=35, xmax=67, ymin=7.75, ymax=8, fill="green4")+
+  annotate("rect", xmin=74, xmax=94, ymin=7.75, ymax=8, fill="green4")+
+  annotate("rect", xmin=139, xmax=201, ymin=7.75, ymax=8, fill="green4")+
+  annotate("rect", xmin=210, xmax=241, ymin=7.75, ymax=8, fill="green4")+
+  annotate("rect", xmin=247, xmax=276, ymin=7.75, ymax=8, fill="green4")+
+  annotate("rect", xmin=365, xmax=398, ymin=7.75, ymax=8, fill="green4")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-1.2, ymax=1.2, fill="gray")+
+  scale_color_manual(values=c("green4","darkgrey","darkgrey"),
+                     labels=c("TMS","Sham","Sham2"))+
+  scale_fill_manual(values=c("green4","darkgrey","darkgrey"),
+                     labels=c("TMS","Sham","Sham2"))+
+  scale_y_continuous(limits=c(-5.8,5.8), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-300,500),
+                     breaks=c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Amplitude (SD)")+ ggtitle("AMY Medial n = 18, cutaneous n = 1")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.title = element_text(color = "black", size = rel(1.5)))+
+  labs(fill="",col="",linetype = "Cutaneous?")
+p.new_norm_amy_me
+```
+
+```{r la}
+p.new_norm_amy_la <- normwave_amy_new_la %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, linetype="dotted", col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = Condition), alpha = .25)+
+  geom_line(aes(col = Condition, linetype = cutaneous),size=1)+
+  # all
+  # annotate("rect", xmin=177, xmax=255, ymin=5.5, ymax=5.8, fill="dodgerblue3")+
+  # selected
+  annotate("rect", xmin=238, xmax=258, ymin=5.5, ymax=5.8, fill="maroon3")+
+  annotate("rect", xmin=403, xmax=435, ymin=5.5, ymax=5.8, fill="maroon3")+
+  annotate("rect", xmin=-10, xmax=25, ymin=-1.2, ymax=1.2, fill="gray")+
+  scale_color_manual(values=c("maroon3","darkgrey","darkgrey"),
+                     labels=c("TMS","Sham","Sham2"))+
+  scale_fill_manual(values=c("maroon3","darkgrey","darkgrey"),
+                     labels=c("TMS","Sham","Sham2"))+
+  scale_y_continuous(limits=c(-5.8,5.8), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-300,500),
+                     breaks=c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+
+  ylab("Amplitude (SD)")+ ggtitle("AMY Lateral n = 12, cutaneous n = 4")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))+
+  theme(legend.title = element_text(color = "black", size = rel(1.5)))+
+  labs(fill="",col="",linetype = "Cutaneous?")
+p.new_norm_amy_la
+```
+
+
+
+### N/P70
+
+```{r N/P70 whole}
+means_ptp1_amy <- ptp1_amy %>% group_by(Condition) %>%
+  summarise(mean = mean(range1), se = mean(range1)/sqrt(44)) %>% 
+  group_by(Condition) %>% summarise(mean_range1 = mean(mean), se = mean(se))
+p.ptp1_amy <- ptp1_amy %>% left_join(means_ptp1_amy) %>% 
+  ggplot(aes(Condition, range1))+
+  stat_summary(aes(y=mean_range1, fill = Condition), col = "black", geom = "bar", 
+               alpha = .8, size = 1.2, width = .5, position = "dodge")+
+  geom_errorbar(aes(ymin=mean_range1-se, ymax=mean_range1+se),  # add error bar
+                width=0.1, color='black', position = position_dodge(.9), size=1.2)+
+  geom_point(col = "darkgrey", position = position_jitter(width=.08), alpha = .4, size = 3)+
+  geom_signif(y_position=20, xmin=c(1.05), xmax=c(1.95), annotation=c("**"), 
+              tip_length=0, size=1, textsize = 10, vjust = 0.3)+
+  geom_signif(y_position=20, xmin=c(2.05), xmax=c(2.95), annotation=c("n.s."), 
+              tip_length=0, size=1, textsize = 6, vjust = -0.2)+
+  scale_color_manual(values=c("orangered3","grey","white"))+
+  scale_fill_manual(values=c("orangered3","grey","white"))+
+  ylim(0,52)+
+  ylab("N/P70 Range (SD)")+xlab("AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+  # theme(legend.position = "none")
+p.ptp1_amy
+```
+
+```{r N/P70 left}
+means_ptp1_amy_L <- ptp1_amy_L %>% group_by(Condition) %>%
+  summarise(mean = mean(range1), se = mean(range1)/sqrt(17)) %>% 
+  group_by(Condition) %>% summarise(mean_range1 = mean(mean), se = mean(se))
+p.ptp1_amy_L <- ptp1_amy_L %>% left_join(means_ptp1_amy_L) %>% 
+  ggplot(aes(Condition, range1))+
+  stat_summary(aes(y=mean_range1, fill = Condition), col = "black", geom = "bar", 
+               alpha = .8, size = 1.2, width = .5, position = "dodge")+
+  geom_errorbar(aes(ymin=mean_range1-se, ymax=mean_range1+se),  # add error bar
+                width=0.1, color='black', position = position_dodge(.9), size=1.2)+
+  geom_point(col = "darkgrey", position = position_jitter(width=.08), alpha = .4, size = 3)+
+  geom_signif(y_position=20, xmin=c(1.05), xmax=c(1.95), annotation=c("*"), 
+              tip_length=0, size=1, textsize = 10, vjust = 0.3)+
+  geom_signif(y_position=20, xmin=c(2.05), xmax=c(2.95), annotation=c("n.s."), 
+              tip_length=0, size=1, textsize = 6, vjust = -0.2)+
+  scale_fill_manual(values=c("orangered3","grey","white"))+
+  ylim(0,52)+
+  ylab("N/P70 Range (SD)")+xlab("L AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.ptp1_amy_L
+```
+
+```{r N/P70 Right}
+means_ptp1_amy_R <- ptp1_amy_R %>% group_by(Condition) %>%
+  summarise(mean = mean(range1), se = mean(range1)/sqrt(17)) %>% 
+  group_by(Condition) %>% summarise(mean_range1 = mean(mean), se = mean(se))
+p.ptp1_amy_R <- ptp1_amy_R %>% left_join(means_ptp1_amy_R) %>% 
+  ggplot(aes(Condition, range1))+
+  stat_summary(aes(y=mean_range1, fill = Condition), col = "black", geom = "bar", 
+               alpha = .8, size = 1.2, width = .5, position = "dodge")+
+  geom_errorbar(aes(ymin=mean_range1-se, ymax=mean_range1+se),  # add error bar
+                width=0.1, color='black', position = position_dodge(.9), size=1.2)+
+  geom_point(col = "darkgrey", position = position_jitter(width=.08), alpha = .4, size = 3)+
+  geom_signif(y_position=20, xmin=c(1.05), xmax=c(1.95), annotation=c("**"), 
+              tip_length=0, size=1, textsize = 10, vjust = 0.3)+
+  geom_signif(y_position=20, xmin=c(2.05), xmax=c(2.95), annotation=c("n.s."), 
+              tip_length=0, size=1, textsize = 6, vjust = -0.2)+
+  scale_fill_manual(values=c("orangered3","grey","white"))+
+  ylim(0,52)+
+  ylab("N/P70 Range (SD)")+xlab("R AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.ptp1_amy_R
+```
+
+```{r view N/P70 LR}
+p.ptp1_amy|p.ptp1_amy_L|p.ptp1_amy_R
+```
+
+```{r N/P70 Medial}
+means_ptp1_amy_me <- ptp1_amy_me %>% group_by(Condition) %>%
+  summarise(mean = mean(range1), se = mean(range1)/sqrt(28)) %>% 
+  group_by(Condition) %>% summarise(mean_range1 = mean(mean), se = mean(se))
+p.ptp1_amy_me <- ptp1_amy_me %>% left_join(means_ptp1_amy_me) %>% 
+  ggplot(aes(Condition, range1))+
+  stat_summary(aes(y=mean_range1, fill = Condition), col = "black", geom = "bar", 
+               alpha = .8, size = 1.2, width = .5, position = "dodge")+
+  geom_errorbar(aes(ymin=mean_range1-se, ymax=mean_range1+se),  # add error bar
+                width=0.1, color='black', position = position_dodge(.9), size=1.2)+
+  geom_point(col = "darkgrey", position = position_jitter(width=.08), alpha = .4, size = 3)+
+  geom_signif(y_position=20, xmin=c(1.05), xmax=c(1.95), annotation=c("**"), 
+              tip_length=0, size=1, textsize = 10, vjust = 0.3)+
+  geom_signif(y_position=20, xmin=c(2.05), xmax=c(2.95), annotation=c("n.s."), 
+              tip_length=0, size=1, textsize = 6, vjust = -0.2)+
+  scale_fill_manual(values=c("orangered3","grey","white"))+
+  ylim(0,52)+
+  ylab("N/P70 Range (SD)")+xlab("Medial AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.ptp1_amy_me
+```
+
+```{r N/P70 Lateral}
+means_ptp1_amy_la <- ptp1_amy_la %>% group_by(Condition) %>%
+  summarise(mean = mean(range1), se = mean(range1)/sqrt(16)) %>% 
+  group_by(Condition) %>% summarise(mean_range1 = mean(mean), se = mean(se))
+p.ptp1_amy_la <- ptp1_amy_la %>% left_join(means_ptp1_amy_la) %>% 
+  ggplot(aes(Condition, range1))+
+  stat_summary(aes(y=mean_range1, fill = Condition), col = "black", geom = "bar", 
+               alpha = .8, size = 1.2, width = .5, position = "dodge")+
+  geom_errorbar(aes(ymin=mean_range1-se, ymax=mean_range1+se),  # add error bar
+                width=0.1, color='black', position = position_dodge(.9), size=1.2)+
+  geom_point(col = "darkgrey", position = position_jitter(width=.08), alpha = .4, size = 3)+
+  geom_signif(y_position=20, xmin=c(1.05), xmax=c(1.95), annotation=c("n.s."), 
+              tip_length=0, size=1, textsize = 6, vjust = -0.2)+
+  geom_signif(y_position=20, xmin=c(2.05), xmax=c(2.95), annotation=c("n.s."), 
+              tip_length=0, size=1, textsize = 6, vjust = -0.2)+
+  scale_fill_manual(values=c("orangered3","grey","white"))+
+  ylim(0,52)+
+  ylab("N/P70 Range (SD)")+xlab("Lateral AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.ptp1_amy_la
+```
+
+```{r view N/P70 mela}
+p.ptp1_amy_me|p.ptp1_amy_la
+```
+
+```{r N/P70 latency}
+
+```
+
+
+
+### N150
+
+```{r N150 whole}
+means_ptp2_amy <- ptp2_amy %>% group_by(Condition) %>%
+  summarise(mean = mean(range1), se = mean(range1)/sqrt(44)) %>% 
+  group_by(Condition) %>% summarise(mean_range1 = mean(mean), se = mean(se))
+p.ptp2_amy <- ptp2_amy %>% left_join(means_ptp2_amy) %>% 
+  ggplot(aes(Condition, range1))+
+  stat_summary(aes(y=mean_range1, fill = Condition), col = "black", geom = "bar", 
+               alpha = .8, size = 1.2, width = .5, position = "dodge")+
+  geom_errorbar(aes(ymin=mean_range1-se, ymax=mean_range1+se),  # add error bar
+                width=0.1, color='black', position = position_dodge(.9), size=1.2)+
+  geom_point(col = "darkgrey", position = position_jitter(width=.08), alpha = .4, size = 3)+
+  geom_signif(y_position=20, xmin=c(1.05), xmax=c(1.95), annotation=c("***"), 
+              tip_length=0, size=1, textsize = 10, vjust = 0.3)+
+  geom_signif(y_position=20, xmin=c(2.05), xmax=c(2.95), annotation=c("n.s."), 
+              tip_length=0, size=1, textsize = 6, vjust = -0.2)+
+  scale_fill_manual(values=c("seagreen4","grey","white"))+
+  ylim(0,50)+
+  ylab("N150 Range (SD)")+xlab("AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+  # theme(legend.position = "none")
+p.ptp2_amy
+```
+
+```{r N150 left}
+means_ptp2_amy_L <- ptp2_amy_L %>% group_by(Condition) %>%
+  summarise(mean = mean(range1), se = mean(range1)/sqrt(17)) %>% 
+  group_by(Condition) %>% summarise(mean_range1 = mean(mean), se = mean(se))
+p.ptp2_amy_L <- ptp2_amy_L %>% left_join(means_ptp2_amy_L) %>% 
+  ggplot(aes(Condition, range1))+
+  stat_summary(aes(y=mean_range1, fill = Condition), col = "black", geom = "bar", 
+               alpha = .8, size = 1.2, width = .5, position = "dodge")+
+  geom_errorbar(aes(ymin=mean_range1-se, ymax=mean_range1+se),  # add error bar
+                width=0.1, color='black', position = position_dodge(.9), size=1.2)+
+  geom_point(col = "darkgrey", position = position_jitter(width=.08), alpha = .4, size = 3)+
+  geom_signif(y_position=20, xmin=c(1.05), xmax=c(1.95), annotation=c("*"), 
+              tip_length=0, size=1, textsize = 10, vjust = 0.3)+
+  geom_signif(y_position=20, xmin=c(2.05), xmax=c(2.95), annotation=c("n.s."), 
+              tip_length=0, size=1, textsize = 6, vjust = -0.2)+
+  scale_fill_manual(values=c("seagreen4","grey","white"))+
+  ylim(0,50)+
+  ylab("N150 Range (SD)")+xlab("L AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.ptp2_amy_L
+```
+
+```{r N150 Right}
+means_ptp2_amy_R <- ptp2_amy_R %>% group_by(Condition) %>%
+  summarise(mean = mean(range1), se = mean(range1)/sqrt(17)) %>% 
+  group_by(Condition) %>% summarise(mean_range1 = mean(mean), se = mean(se))
+p.ptp2_amy_R <- ptp2_amy_R %>% left_join(means_ptp2_amy_R) %>% 
+  ggplot(aes(Condition, range1))+
+  stat_summary(aes(y=mean_range1, fill = Condition), col = "black", geom = "bar", 
+               alpha = .8, size = 1.2, width = .5, position = "dodge")+
+  geom_errorbar(aes(ymin=mean_range1-se, ymax=mean_range1+se),  # add error bar
+                width=0.1, color='black', position = position_dodge(.9), size=1.2)+
+  geom_point(col = "darkgrey", position = position_jitter(width=.08), alpha = .4, size = 3)+
+  geom_signif(y_position=20, xmin=c(1.05), xmax=c(1.95), annotation=c("**"), 
+              tip_length=0, size=1, textsize = 10, vjust = 0.3)+
+  geom_signif(y_position=20, xmin=c(2.05), xmax=c(2.95), annotation=c("n.s."), 
+              tip_length=0, size=1, textsize = 6, vjust = -0.2)+
+  scale_fill_manual(values=c("seagreen4","grey","white"))+
+  ylim(0,50)+
+  ylab("N150 Range (SD)")+xlab("R AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.ptp2_amy_R
+```
+
+```{r view N150 LR}
+p.ptp2_amy|p.ptp2_amy_L|p.ptp2_amy_R
+```
+
+
+```{r N150 Medial}
+means_ptp2_amy_me <- ptp2_amy_me %>% group_by(Condition) %>%
+  summarise(mean = mean(range1), se = mean(range1)/sqrt(28)) %>% 
+  group_by(Condition) %>% summarise(mean_range1 = mean(mean), se = mean(se))
+p.ptp2_amy_me <- ptp2_amy_me %>% left_join(means_ptp2_amy_me) %>% 
+  ggplot(aes(Condition, range1))+
+  stat_summary(aes(y=mean_range1, fill = Condition), col = "black", geom = "bar", 
+               alpha = .8, size = 1.2, width = .5, position = "dodge")+
+  geom_errorbar(aes(ymin=mean_range1-se, ymax=mean_range1+se),  # add error bar
+                width=0.1, color='black', position = position_dodge(.9), size=1.2)+
+  geom_point(col = "darkgrey", position = position_jitter(width=.08), alpha = .4, size = 3)+
+  geom_signif(y_position=20, xmin=c(1.05), xmax=c(1.95), annotation=c("**"), 
+              tip_length=0, size=1, textsize = 10, vjust = 0.3)+
+  geom_signif(y_position=20, xmin=c(2.05), xmax=c(2.95), annotation=c("n.s."), 
+              tip_length=0, size=1, textsize = 6, vjust = -0.2)+
+  scale_fill_manual(values=c("seagreen4","grey","white"))+
+  ylim(0,50)+
+  ylab("N150 Range (SD)")+xlab("Medial AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.ptp2_amy_me
+```
+
+```{r N150 Lateral}
+means_ptp2_amy_la <- ptp2_amy_la %>% group_by(Condition) %>%
+  summarise(mean = mean(range1), se = mean(range1)/sqrt(16)) %>% 
+  group_by(Condition) %>% summarise(mean_range1 = mean(mean), se = mean(se))
+p.ptp2_amy_la <- ptp2_amy_la %>% left_join(means_ptp2_amy_la) %>% 
+  ggplot(aes(Condition, range1))+
+  stat_summary(aes(y=mean_range1, fill = Condition), col = "black", geom = "bar", 
+               alpha = .8, size = 1.2, width = .5, position = "dodge")+
+  geom_errorbar(aes(ymin=mean_range1-se, ymax=mean_range1+se),  # add error bar
+                width=0.1, color='black', position = position_dodge(.9), size=1.2)+
+  geom_point(col = "darkgrey", position = position_jitter(width=.08), alpha = .4, size = 3)+
+  geom_signif(y_position=20, xmin=c(1.05), xmax=c(1.95), annotation=c("*"), 
+              tip_length=0, size=1, textsize = 10, vjust = 0.3)+
+  geom_signif(y_position=20, xmin=c(2.05), xmax=c(2.95), annotation=c("n.s."), 
+              tip_length=0, size=1, textsize = 6, vjust = -0.2)+
+  scale_fill_manual(values=c("seagreen4","grey","white"))+
+  ylim(0,50)+
+  ylab("N150 Range (SD)")+xlab("Lateral AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.ptp2_amy_la
+```
+
+```{r view N150 mela}
+p.ptp2_amy_me|p.ptp2_amy_la
+```
+
+```{r N150 latency mela}
+
+```
+
+
+### P300
+
+```{r P300 whole}
+means_ptp3_amy <- ptp3_amy %>% group_by(Condition) %>%
+  summarise(mean = mean(range1), se = mean(range1)/sqrt(44)) %>% 
+  group_by(Condition) %>% summarise(mean_range1 = mean(mean), se = mean(se))
+p.ptp3_amy <- ptp3_amy %>% left_join(means_ptp3_amy) %>% 
+  ggplot(aes(Condition, range1))+
+  stat_summary(aes(y=mean_range1, fill = Condition), col = "black", geom = "bar", 
+               alpha = .8, size = 1.2, width = .5, position = "dodge")+
+  geom_errorbar(aes(ymin=mean_range1-se, ymax=mean_range1+se),  # add error bar
+                width=0.1, color='black', position = position_dodge(.9), size=1.2)+
+  geom_point(col = "darkgrey", position = position_jitter(width=.08), alpha = .4, size = 3)+
+  geom_signif(y_position=23, xmin=c(1.05), xmax=c(1.95), annotation=c("***"), 
+              tip_length=0, size=1, textsize = 10, vjust = 0.3)+
+  geom_signif(y_position=23, xmin=c(2.05), xmax=c(2.95), annotation=c("*"), 
+              tip_length=0, size=1, textsize = 10, vjust = 0.3)+
+  scale_fill_manual(values=c("royalblue4","grey","white"))+
+  ylim(0,30)+
+  ylab("P300 Range (SD)")+xlab("AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+  # theme(legend.position = "none")
+p.ptp3_amy
+```
+
+```{r P300 left}
+means_ptp3_amy_L <- ptp3_amy_L %>% group_by(Condition) %>%
+  summarise(mean = mean(range1), se = mean(range1)/sqrt(17)) %>% 
+  group_by(Condition) %>% summarise(mean_range1 = mean(mean), se = mean(se))
+p.ptp3_amy_L <- ptp3_amy_L %>% left_join(means_ptp3_amy_L) %>% 
+  ggplot(aes(Condition, range1))+
+  stat_summary(aes(y=mean_range1, fill = Condition), col = "black", geom = "bar", 
+               alpha = .8, size = 1.2, width = .5, position = "dodge")+
+  geom_errorbar(aes(ymin=mean_range1-se, ymax=mean_range1+se),  # add error bar
+                width=0.1, color='black', position = position_dodge(.9), size=1.2)+
+  geom_point(col = "darkgrey", position = position_jitter(width=.08), alpha = .4, size = 3)+
+  geom_signif(y_position=23, xmin=c(1.05), xmax=c(1.95), annotation=c("**"), 
+              tip_length=0, size=1, textsize = 10, vjust = 0.3)+
+  geom_signif(y_position=23, xmin=c(2.05), xmax=c(2.95), annotation=c("n.s."), 
+              tip_length=0, size=1, textsize = 6, vjust = -0.2)+
+  scale_fill_manual(values=c("royalblue4","grey","white"))+
+  ylim(0,30)+
+  ylab("P300 Range (SD)")+xlab("L AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.ptp3_amy_L
+```
+
+```{r P300 Right}
+means_ptp3_amy_R <- ptp3_amy_R %>% group_by(Condition) %>%
+  summarise(mean = mean(range1), se = mean(range1)/sqrt(17)) %>% 
+  group_by(Condition) %>% summarise(mean_range1 = mean(mean), se = mean(se))
+p.ptp3_amy_R <- ptp3_amy_R %>% left_join(means_ptp3_amy_R) %>% 
+  ggplot(aes(Condition, range1))+
+  stat_summary(aes(y=mean_range1, fill = Condition), col = "black", geom = "bar", 
+               alpha = .8, size = 1.2, width = .5, position = "dodge")+
+  geom_errorbar(aes(ymin=mean_range1-se, ymax=mean_range1+se),  # add error bar
+                width=0.1, color='black', position = position_dodge(.9), size=1.2)+
+  geom_point(col = "darkgrey", position = position_jitter(width=.08), alpha = .4, size = 3)+
+  geom_signif(y_position=23, xmin=c(1.05), xmax=c(1.95), annotation=c("**"), 
+              tip_length=0, size=1, textsize = 10, vjust = 0.3)+
+  geom_signif(y_position=23, xmin=c(2.05), xmax=c(2.95), annotation=c("**"), 
+              tip_length=0, size=1, textsize = 10, vjust = 0.3)+
+  scale_fill_manual(values=c("royalblue4","grey","white"))+
+  ylim(0,30)+
+  ylab("P300 Range (SD)")+xlab("R AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.ptp3_amy_R
+```
+
+```{r view P300 LR}
+p.ptp3_amy|p.ptp3_amy_L|p.ptp3_amy_R
+```
+
+
+```{r P300 Medial}
+means_ptp3_amy_me <- ptp3_amy_me %>% group_by(Condition) %>%
+  summarise(mean = mean(range1), se = mean(range1)/sqrt(28)) %>% 
+  group_by(Condition) %>% summarise(mean_range1 = mean(mean), se = mean(se))
+p.ptp3_amy_me <- ptp3_amy_me %>% left_join(means_ptp3_amy_me) %>% 
+  ggplot(aes(Condition, range1))+
+  stat_summary(aes(y=mean_range1, fill = Condition), col = "black", geom = "bar", 
+               alpha = .8, size = 1.2, width = .5, position = "dodge")+
+  geom_errorbar(aes(ymin=mean_range1-se, ymax=mean_range1+se),  # add error bar
+                width=0.1, color='black', position = position_dodge(.9), size=1.2)+
+  geom_point(col = "darkgrey", position = position_jitter(width=.08), alpha = .4, size = 3)+
+  geom_signif(y_position=23, xmin=c(1.05), xmax=c(1.95), annotation=c("**"), 
+              tip_length=0, size=1, textsize = 10, vjust = 0.3)+
+  geom_signif(y_position=23, xmin=c(2.05), xmax=c(2.95), annotation=c("n.s."), 
+              tip_length=0, size=1, textsize = 6, vjust = -0.2)+
+  scale_fill_manual(values=c("royalblue4","grey","white"))+
+  ylim(0,30)+
+  ylab("P300 Range (SD)")+xlab("Medial AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.ptp3_amy_me
+```
+
+```{r P300 Lateral}
+means_ptp3_amy_la <- ptp3_amy_la %>% group_by(Condition) %>%
+  summarise(mean = mean(range1), se = mean(range1)/sqrt(16)) %>% 
+  group_by(Condition) %>% summarise(mean_range1 = mean(mean), se = mean(se))
+p.ptp3_amy_la <- ptp3_amy_la %>% left_join(means_ptp3_amy_la) %>% 
+  ggplot(aes(Condition, range1))+
+  stat_summary(aes(y=mean_range1, fill = Condition), col = "black", geom = "bar", 
+               alpha = .8, size = 1.2, width = .5, position = "dodge")+
+  geom_errorbar(aes(ymin=mean_range1-se, ymax=mean_range1+se),  # add error bar
+                width=0.1, color='black', position = position_dodge(.9), size=1.2)+
+  geom_point(col = "darkgrey", position = position_jitter(width=.08), alpha = .4, size = 3)+
+  geom_signif(y_position=23, xmin=c(1.05), xmax=c(1.95), annotation=c("**"), 
+              tip_length=0, size=1, textsize = 10, vjust = 0.3)+
+  geom_signif(y_position=23, xmin=c(2.05), xmax=c(2.95), annotation=c("n.s."), 
+              tip_length=0, size=1, textsize = 6, vjust = -0.2)+
+  scale_fill_manual(values=c("royalblue4","grey","white"))+
+  ylim(0,30)+
+  ylab("P300 Range (SD)")+xlab("Lateral AMY")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.8))+
+  theme(axis.ticks=element_line(color="black",size=.8,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.text = element_text(color = "black", size = rel(1.5)))
+p.ptp3_amy_la
+```
+
+```{r view P300 mela}
+p.ptp3_amy|p.ptp3_amy_me|p.ptp3_amy_la
+```
+
+

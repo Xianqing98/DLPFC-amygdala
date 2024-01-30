@@ -1,0 +1,2831 @@
+---
+title: "iTEP ALL"
+author: "Xianqing"
+date: "3/15/2023"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(readxl)
+library(lme4)
+library(lmerTest)
+library(readr)
+library(patchwork)
+library(ggsignif)
+library(psych) # load correlation
+library(RColorBrewer)#color
+library(car)
+# load("C:/Users/xjl19/Desktop/TMS-iEEG/Stanford_Processed/TEP/iTEP_all.RData")
+rootpath <- "/Users/xianqing/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/3_ProcessedData_Backup/allPatients_oEEGdata_csv/"
+wd <- paste0(rootpath,"iTEP_csv_L-DLPFC_amy")
+wd <- paste0(rootpath,"iTEP_csv_L-DLPFC_amy/cutaneous")
+wd <- paste0(rootpath,"iTEP_csv_R-DLPFC_amy")
+wd <- paste0(rootpath,"iTEP_csv_R-Parietal_amy")
+setwd(wd)
+```
+
+### Read neural data
+
+```{r read new TEP csv}
+TEP_amy <- read_csv(list.files(wd, pattern = '*.csv'))
+TEP_amy$Time <- TEP_amy$Time*1000
+TEP_amy$Channel <- paste(TEP_amy$Patient, TEP_amy$Channel, sep = "_")
+TEP_amy$Condition <- factor(TEP_amy$Condition, levels = c("tms", "sham", "fake"))
+
+TEP_amy_cu <- read_csv(list.files(wd, pattern = '*.csv'))
+TEP_amy_cu$Time <- TEP_amy_cu$Time*1000
+TEP_amy_cu$Channel <- paste(TEP_amy_cu$Patient, TEP_amy_cu$Channel, sep = "_")
+
+# delete questionable channels l dlpfc
+TEP_amy <- filter(TEP_amy, Patient != 672 & 
+                    Channel != "593_LFPx183" &
+                    Channel != "593_LFPx184" &
+                    Channel != "593_LFPx185" &
+                    Channel != "593_LFPx231" &
+                    Channel != "430_LFPx14" )
+TEP_amy_cu <- filter(TEP_amy_cu, 
+                    Channel != "593_LFPx183" &
+                    Channel != "593_LFPx184" &
+                    Channel != "593_LFPx185" &
+                    Channel != "593_LFPx231")
+
+# delete questionable channels r parietal
+TEP_amy <- filter(TEP_amy, 
+                    Channel != "405_LFPx77" &
+                    Channel != "405_LFPx78" &
+                    Channel != "423_LFPx79" &
+                    Channel != "423_LFPx80" &
+                    Channel != "423_LFPx82" )
+
+ChannelList <- TEP_amy %>% group_by(Channel) %>% 
+  summarise(Patient = mean(Patient))
+ChannelList <- ChannelList[[1]]
+
+ChannelList_cu <- TEP_amy_cu %>% group_by(Channel) %>% 
+  summarise(Patient = mean(Patient))
+ChannelList_cu <- ChannelList_cu[[1]]
+
+# add ROI info
+chlinfo_amy <- read_excel(paste0(rootpath, "Selected_Channel_AMY.xlsx"),
+                          sheet = "TMS L-DLPFC")
+chlinfo_amy <- read_excel(paste0(rootpath, "Selected_Channel_AMY.xlsx"),
+                          sheet = "TMS R-Parietal")
+chlinfo_amy$Channel <- paste(chlinfo_amy$Patient, chlinfo_amy$Channel, sep = "_LFPx")
+TEP_amy <- left_join(TEP_amy, chlinfo_amy[c(2,15,23)])
+TEP_amy_cu <- left_join(TEP_amy_cu, chlinfo_amy[c(2,15,23)])
+TEP_amy_cu <- TEP_amy_cu %>% mutate(Condition = ifelse(Condition == "sham", "sham2","tms"))
+```
+
+### Plot TEP
+
+```{r plot Amd iTEP, echo=FALSE}
+TEP_amy <- TEP_amy %>% mutate(Cutaneous = "No")
+TEP_amy_cu <- TEP_amy_cu %>% mutate(Cutaneous = "Yes")
+TEP_amy_all <- rbind(TEP_amy, filter(TEP_amy_cu, Condition == "sham2"))
+TEP_amy_all <- TEP_amy_all %>% filter(Patient > 592)
+TEP_amy_all$Cutaneous <- factor(TEP_amy_all$Cutaneous)
+TEP_amy_all$Channel <- factor(TEP_amy_all$Channel, levels = c("593_LFPx186","593_LFPx187","634_LFPx57","593_LFPx233","593_LFPx234"))
+
+# TEP_amy_all
+baseline_amy_all <- filter(TEP_amy_all, Time <= -50 & Time >=-250) %>%
+  group_by(Patient,Condition,Channel,Cutaneous,DKT,is_lateral) %>% 
+  summarise(base_mean = mean(Amplitude), base_sd = sd(Amplitude))
+TEP_amy_all <- TEP_amy_all %>% left_join(baseline_amy_all) %>% 
+  mutate(iTEP_norm = (Amplitude - base_mean)/base_sd,
+         SDchange = abs((Amplitude - base_mean)/base_sd))
+summary(TEP_amy_all)
+# TEP_amy %>% # 672 amygdala
+# filter(TEP_amy_cu, Time <= 450 & Time >= -250) %>% 
+# filter(TEP_amy_sham, Patient > 592 & Time <= 450 & Time >= -250) %>% 
+TEP_amy_all %>%
+  filter(Time <= 450 & Time >= -250) %>% 
+  group_by(Channel, Condition, Time, Cutaneous) %>%
+  summarise(mean_amplitude = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(40)) %>%
+  ggplot(aes(Time, mean_amplitude))+
+  geom_hline(yintercept=0, linetype="dotted", size = .8, col = "darkgray")+
+  geom_ribbon(aes(ymin=mean_amplitude-se, ymax=mean_amplitude+se, fill = Condition), alpha = .2)+
+  stat_summary(aes(col=Condition,linetype=Cutaneous), geom="line", size=1, alpha = .9)+
+  annotate("rect", xmin=-10, xmax=25, ymin=-1, ymax=1, fill="gray")+
+  scale_color_manual(values=c("dodgerblue3","darkgray","gray40"),
+                     labels=c("TMS","Sham","Sham w/ cutaneous"))+
+  scale_fill_manual(values=c("dodgerblue3","darkgray","gray40"),
+                    labels=c("TMS","Sham","Sham w/ cutaneous"))+
+  ylim(-2.5,2)+
+  ylab("Amplitude (SD)")+xlab("Time (ms)")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=1))+
+  theme(axis.ticks=element_line(color="black",size=1,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.3)))+
+  theme(axis.title = element_text(color = "black", size = 16))+
+  theme(legend.text = element_text(color = "black", size = 16))+
+  theme(legend.position=c(0.85,0.22))+labs(fill="",col="",linetype="")+
+  facet_wrap(~Channel)
+```
+
+```{r filtering bad trials}
+# TEP_amy <- left_join(TEP_amy, chlinfo_amy[c(2,4,5)])
+TEP_amy_TMS <- filter(TEP_amy, Condition == "tms")
+TEP_amy_Sham <- filter(TEP_amy, Condition == "sham")
+
+BadTrials_TMS <- TEP_amy_TMS %>% group_by(Channel, TrialNumber) %>%
+  summarise(TrialNumber = mean(TrialNumber)) %>% 
+  left_join(chlinfo_amy[c(2,4)]) %>% 
+  mutate(bad = 0)
+BadTrials_Sham <- TEP_amy_Sham %>% group_by(Channel, TrialNumber) %>%
+  summarise(TrialNumber = mean(TrialNumber)) %>% 
+  left_join(chlinfo_amy[c(2,5)]) %>% 
+  mutate(bad = 0)
+
+for (i in 1:nrow(BadTrials_TMS)){
+  if (BadTrials_TMS$TrialNumber[i] %in%
+      as.numeric(strsplit(BadTrials_TMS$BadTrials_TMS[i], ";")[[1]])){
+      BadTrials_TMS$bad[i] <- 1
+      }
+}
+TEP_amy_TMS <- left_join(TEP_amy_TMS, BadTrials_TMS)
+TEP_amy_TMS <- filter(TEP_amy_TMS, bad == 0)
+
+for (i in 1:nrow(BadTrials_Sham)){
+  if (BadTrials_Sham$TrialNumber[i] %in%
+      as.numeric(strsplit(BadTrials_Sham$BadTrials_Sham[i], ";")[[1]])){
+      BadTrials_Sham$bad[i] <- 1
+      }
+}
+TEP_amy_Sham <- left_join(TEP_amy_Sham, BadTrials_Sham)
+TEP_amy_Sham <- filter(TEP_amy_Sham, bad == 0)
+
+TEP_amy <- rbind(TEP_amy_TMS[-9], TEP_amy_Sham[-9])
+rm(TEP_amy_Sham)
+rm(TEP_amy_TMS)
+```
+
+```{r filtering bad cutaneous trials}
+# TEP_amy <- left_join(TEP_amy, chlinfo_amy[c(2,4,5)])
+TEP_amy_cu_TMS <- filter(TEP_amy_cu, Condition == "tms")
+TEP_amy_cu_Sham <- filter(TEP_amy_cu, Condition == "sham2")
+
+BadTrials_cu_TMS <- TEP_amy_cu_TMS %>% group_by(Channel, TrialNumber) %>%
+  summarise(TrialNumber = mean(TrialNumber)) %>% 
+  left_join(chlinfo_amy[c(2,4)]) %>% 
+  mutate(bad = 0)
+BadTrials_cu_Sham <- TEP_amy_cu_Sham %>% group_by(Channel, TrialNumber) %>%
+  summarise(TrialNumber = mean(TrialNumber)) %>% 
+  left_join(chlinfo_amy[c(2,3)]) %>% 
+  mutate(bad = 0)
+
+for (i in 1:nrow(BadTrials_cu_TMS)){
+  if (BadTrials_cu_TMS$TrialNumber[i] %in%
+      as.numeric(strsplit(BadTrials_cu_TMS$BadTrials_TMS[i], ";")[[1]])){
+      BadTrials_cu_TMS$bad[i] <- 1
+      }
+}
+TEP_amy_cu_TMS <- left_join(TEP_amy_cu_TMS, BadTrials_cu_TMS)
+TEP_amy_cu_TMS <- filter(TEP_amy_cu_TMS, bad == 0)
+
+for (i in 1:nrow(BadTrials_cu_Sham)){
+  if (BadTrials_cu_Sham$TrialNumber[i] %in%
+      as.numeric(strsplit(BadTrials_cu_Sham$BadTrials_Sham2[i], ";")[[1]])){
+      BadTrials_cu_Sham$bad[i] <- 1
+      }
+}
+TEP_amy_cu_Sham <- left_join(TEP_amy_cu_Sham, BadTrials_cu_Sham)
+TEP_amy_cu_Sham <- filter(TEP_amy_cu_Sham, bad == 0)
+
+TEP_amy_cu <- rbind(TEP_amy_cu_TMS[-9], TEP_amy_cu_Sham[-9])
+rm(TEP_amy_cu_Sham)
+rm(TEP_amy_cu_TMS)
+```
+
+## normalization
+
+```{r amygdala iTEP normalization}
+TEP_amy_avg  <- TEP_amy %>% 
+  group_by(Patient, Condition, Channel, Time, DKT, is_lateral) %>% 
+  summarise(iTEP = mean(Amplitude))
+summary(TEP_amy_avg)
+
+# calculate baseline for normalization
+baseline_amy <- filter(TEP_amy_avg, Time <= -50 & Time >=-250) %>%
+  group_by(Patient, Condition, Channel) %>% summarise(base_mean = mean(iTEP), 
+                                           base_sd = sd(iTEP))
+TEP_amy_avg <- TEP_amy_avg %>% left_join(baseline_amy) %>% 
+  mutate(iTEP_norm = (iTEP - base_mean)/base_sd,
+         SDchange = abs((iTEP - base_mean)/base_sd))
+
+
+# write.csv(TEP_amy_avg, "TEP_amy_avg.csv")
+
+# cutaneous
+TEP_amy_sham <- rbind(filter(TEP_amy, Condition == "sham"),
+                      filter(TEP_amy_cu, Condition == "sham2"))
+TEP_amy_tms_sham2 <- rbind(filter(TEP_amy, Condition == "tms"),
+                           filter(TEP_amy_cu, Condition == "sham2"))
+
+TEP_amy_sham_avg  <- TEP_amy_sham %>% 
+  group_by(Patient, Condition, Channel, Time, DKT, is_lateral) %>% 
+  summarise(iTEP = mean(Amplitude))
+summary(TEP_amy_sham_avg)
+
+# calculate baseline for normalization
+baseline_amy_sham <- filter(TEP_amy_sham_avg, Time <= -50 & Time >=-250) %>%
+  group_by(Patient, Condition, Channel) %>% summarise(base_mean = mean(iTEP), 
+                                           base_sd = sd(iTEP))
+TEP_amy_sham_avg <- TEP_amy_sham_avg %>% left_join(baseline_amy_sham) %>% 
+  mutate(iTEP_norm = (iTEP - base_mean)/base_sd,
+         SDchange = abs((iTEP - base_mean)/base_sd))
+
+
+#tvs2
+TEP_amy_tvs2_avg  <- TEP_amy_tms_sham2 %>% 
+  group_by(Patient, Condition, Channel, Time, DKT, is_lateral) %>% 
+  summarise(iTEP = mean(Amplitude))
+summary(TEP_amy_tvs2_avg)
+
+# calculate baseline for normalization
+baseline_amy_tvs2 <- filter(TEP_amy_tvs2_avg, Time <= -50 & Time >=-250) %>%
+  group_by(Patient, Condition, Channel) %>% summarise(base_mean = mean(iTEP), 
+                                           base_sd = sd(iTEP))
+TEP_amy_tvs2_avg <- TEP_amy_tvs2_avg %>% left_join(baseline_amy_tvs2) %>% 
+  mutate(iTEP_norm = (iTEP - base_mean)/base_sd,
+         SDchange = abs((iTEP - base_mean)/base_sd))
+
+
+
+```
+
+# Statistics comparing SDs
+
+```{r Whole amygdala}
+timecourse <- TEP_amy_avg[[4]][527:951] # timewin: -250ms ~ 450 ms
+TEP_amy_avg_tvs <- TEP_amy_avg %>% filter(Condition != "fake")
+
+
+# TMS vs Sham, amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_avg_tvs, Time == timecourse[i])
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+
+
+# TMS vs Sham, abs amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_avg_tvs, Time == timecourse[i])
+  m.tvs <- lm(SDchange ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_abs_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+
+# paired t-test
+TEP_amy_avg_tvs_t <- TEP_amy_avg_tvs[c(1:6,10)] %>% 
+  pivot_wider(names_from = Condition, values_from = iTEP_norm)
+
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_avg_tvs_t, Time == timecourse[i])
+  t.tvs <- t.test(TEP_timepoint$tms, TEP_timepoint$sham, paired = T)
+  
+  coef_new <- 
+    t.tvs$p.value %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+
+coef_tvs <- coef_tvs %>% 
+  mutate(sig_tvs = ifelse(.>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- coef_tvs$.
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+coef_tvs <- coef_tvs %>% mutate(corrected_sig_tvs = plist_adj) %>% 
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+
+```
+
+```{r amygdala L }
+TEP_amy_L_tvs <- TEP_amy_avg %>% filter(DKT == "Left-Amygdala" & Condition != "fake")
+
+# TMS vs Sham
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_L_tvs, Time == timecourse[i])
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_L_sig <- slope_tvs %>% 
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+
+# TMS vs Sham, abs amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_L_tvs, Time == timecourse[i])
+  m.tvs <- lm(SDchange ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_L_abs_sig <- slope_tvs %>% 
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r amygdala R }
+TEP_amy_R_tvs <- TEP_amy_avg %>% filter(DKT == "Right-Amygdala" & Condition != "fake")
+
+# TMS vs Sham
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_R_tvs, Time == timecourse[i])
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_R_sig <- slope_tvs %>% 
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+
+# TMS vs Sham, abs amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_R_tvs, Time == timecourse[i])
+  m.tvs <- lm(SDchange ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_R_abs_sig <- slope_tvs %>% 
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+
+```{r amygdala Medial}
+# Medial: TMS vs Sham
+TEP_amy_me_tvs <- TEP_amy_avg_tvs %>% filter(is_lateral == 0)
+coef_tvs <- data.frame()
+
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_me_tvs, Time == timecourse[i])
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+stats_amy_me_sig <- slope_tvs %>% mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+
+# abs
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_me_tvs, Time == timecourse[i])
+  m.tvs <- lm(SDchange ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+stats_amy_me_abs_sig <- slope_tvs %>% mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r amygdala left Medial}
+# left Medial: TMS vs Sham
+TEP_amy_me_L_tvs <- TEP_amy_me_tvs %>% filter(DKT == "Left-Amygdala")
+
+# coef_tvs <- data.frame()
+# for (i in 1:length(timecourse)){
+#   TEP_timepoint <- filter(TEP_amy_me_L_tvs, Time == timecourse[i])
+#   m.tvs <- lm(SDchange ~ Condition, data = TEP_timepoint)
+#   
+#   coef_new <- 
+#     summary(m.tvs)$coefficients %>% 
+#     data.frame() %>% 
+#     mutate(time = timecourse[i])
+#   coef_tvs <- bind_rows(coef_tvs,coef_new)
+# }
+# slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+#   mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+# 
+# # multiple comparison correction
+# plist <- slope_tvs$Pr...t..
+# plist_adj <- p.adjust(plist,  method ="BH") # FDR
+# slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+# stats_amy_L_me_abs <- slope_tvs %>% mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_me_L_tvs, Time == timecourse[i])
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+stats_amy_L_me <- slope_tvs %>% mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r amygdala right Medial}
+# Medial: TMS vs Sham
+TEP_amy_me_R_tvs <- TEP_amy_me_tvs %>% filter(DKT == "Right-Amygdala")
+
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_me_R_tvs, Time == timecourse[i])
+  m.tvs <- lm(SDchange ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+stats_amy_R_me_abs <- slope_tvs %>% mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_me_R_tvs, Time == timecourse[i])
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+stats_amy_R_me <- slope_tvs %>% mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+
+```{r amygdala Lateral}
+# Lateral: TMS vs Sham
+TEP_amy_la_tvs <- TEP_amy_avg_tvs %>% filter(is_lateral == 1)
+
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_la_tvs, Time == timecourse[i])
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+stats_amy_la_sig <- slope_tvs %>% mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+
+# abs
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_la_tvs, Time == timecourse[i])
+  m.tvs <- lm(SDchange ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+stats_amy_la_abs_sig <- slope_tvs %>% mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r amygdala left lateral}
+# Medial: TMS vs Sham
+TEP_amy_la_L_tvs <- TEP_amy_la_tvs %>% filter(DKT == "Left-Amygdala")
+
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_la_L_tvs, Time == timecourse[i])
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+stats_amy_L_la <- slope_tvs %>% mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_la_L_tvs, Time == timecourse[i])
+  m.tvs <- lm(SDchange ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+stats_amy_L_la_abs <- slope_tvs %>% mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r amygdala right lateral}
+# Medial: TMS vs Sham
+TEP_amy_la_R_tvs <- TEP_amy_la_tvs %>% filter(DKT == "Right-Amygdala")
+
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_la_R_tvs, Time == timecourse[i])
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+stats_amy_R_la <- slope_tvs %>% mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_la_R_tvs, Time == timecourse[i])
+  m.tvs <- lm(SDchange ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+stats_amy_R_la_abs <- slope_tvs %>% mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+## lmer condition LR mela
+
+```{r mean1: 30~100ms}
+# whole amy
+TEP_mean_30_100ms <- TEP_amy_avg_tvs %>% 
+  filter(Time >= 30 & Time <= 100) %>% 
+  group_by(Patient,Condition,Channel,DKT,is_lateral) %>% 
+  summarise(
+    mean1_iTEP = mean(iTEP),
+    mean1_iTEP_norm = mean(iTEP_norm),
+    # mean1_SDchange = mean(SDchange),
+    max1_iTEP_norm = max(iTEP_norm),
+    min1_iTEP_norm = min(iTEP_norm)
+  ) %>% mutate(
+    range1_iTEP_norm = max1_iTEP_norm-min1_iTEP_norm
+  )
+
+TEP_mean_30_100ms$is_lateral <- factor(TEP_mean_30_100ms$is_lateral)
+summary(TEP_mean_30_100ms)
+
+m.mean1_1 <- lmer(mean1_iTEP_norm ~ Condition + (1 | Patient), 
+                   data = TEP_mean_30_100ms,control = lmerControl(optimizer="bobyqa"))
+
+m.mean1_2 <- lmer(mean1_iTEP_norm ~ Condition + Condition:is_lateral + (1 | Patient), 
+                   data = TEP_mean_30_100ms,control = lmerControl(optimizer="bobyqa"))
+
+m.mean1_2.1 <- lmer(mean1_iTEP_norm ~ Condition + Condition:is_lateral + is_lateral + (1 | Patient), 
+                   data = TEP_mean_30_100ms,control = lmerControl(optimizer="bobyqa"))
+
+m.mean1_3 <- lmer(mean1_iTEP_norm ~ Condition + Condition:is_lateral + Condition:DKT + (1 | Patient), 
+                   data = TEP_mean_30_100ms,control = lmerControl(optimizer="bobyqa"))
+
+m.mean1_4 <- lmer(mean1_iTEP_norm ~ Condition * is_lateral + DKT+ (1 | Patient), 
+                   data = TEP_mean_30_100ms,control = lmerControl(optimizer="bobyqa"))
+
+summary(m.mean1_1)
+summary(m.mean1_2)
+summary(m.mean1_2.1)
+summary(m.mean1_3)
+summary(m.mean1_4)
+anova(m.mean1_1, m.mean1_2, m.mean1_3, m.mean1_4)
+anova(m.mean1_2, m.mean1_2.1)
+anoq <- anova(m.mean1_4)
+anoq
+m.mean1 <- m.mean1_2
+summary(m.mean1)
+
+# left amy
+TEP_mean_30_100ms_L <- TEP_amy_avg_tvs %>% 
+  filter(Time >= 30 & Time <= 100 & DKT == "Left-Amygdala") %>% 
+  group_by(Patient,Condition,Channel,is_lateral) %>% 
+  summarise(
+    mean1_iTEP = mean(iTEP),
+    mean1_iTEP_norm = mean(iTEP_norm),
+    # mean1_SDchange = mean(SDchange),
+    max1_iTEP_norm = max(iTEP_norm),
+    min1_iTEP_norm = min(iTEP_norm)
+  ) %>% mutate(
+    range1_iTEP_norm = max1_iTEP_norm-min1_iTEP_norm
+  )
+
+TEP_mean_30_100ms_L$is_lateral <- factor(TEP_mean_30_100ms_L$is_lateral)
+summary(TEP_mean_30_100ms_L)
+
+m.mean1_L_1 <- lm(mean1_iTEP_norm ~ Condition, 
+                   data = TEP_mean_30_100ms_L)
+m.mean1_L_2 <- lm(mean1_iTEP_norm ~ Condition + Condition:is_lateral, 
+                   data = TEP_mean_30_100ms_L)
+summary(m.mean1_L_1)
+summary(m.mean1_L_2)
+
+# right amy
+TEP_mean_30_100ms_R <- TEP_amy_avg_tvs %>% 
+  filter(Time >= 30 & Time <= 100 & DKT == "Right-Amygdala") %>% 
+  group_by(Patient,Condition,Channel,is_lateral) %>% 
+  summarise(
+    mean1_iTEP = mean(iTEP),
+    mean1_iTEP_norm = mean(iTEP_norm),
+    # mean1_SDchange = mean(SDchange),
+    max1_iTEP_norm = max(iTEP_norm),
+    min1_iTEP_norm = min(iTEP_norm)
+  ) %>% mutate(
+    range1_iTEP_norm = max1_iTEP_norm-min1_iTEP_norm
+  )
+
+TEP_mean_30_100ms_R$is_lateral <- factor(TEP_mean_30_100ms_R$is_lateral)
+summary(TEP_mean_30_100ms_R)
+
+m.mean1_R_1 <- lm(mean1_iTEP_norm ~ Condition, 
+                   data = TEP_mean_30_100ms_R)
+m.mean1_R_2 <- lm(mean1_iTEP_norm ~ Condition + Condition:is_lateral, 
+                   data = TEP_mean_30_100ms_R)
+summary(m.mean1_R_1)
+summary(m.mean1_R_2)
+anova(m.mean1_R_1, m.mean1_R_2)
+m.mean1_R <- m.mean1_R_2
+summary(m.mean1_R)
+```
+
+```{r mean2: 150~250ms}
+# whole amy
+TEP_mean_150_250ms <- TEP_amy_avg_tvs %>% 
+  filter(Time >= 150 & Time <= 250) %>% 
+  group_by(Patient,Condition,Channel,DKT,is_lateral) %>% 
+  summarise(
+    mean2_iTEP = mean(iTEP),
+    mean2_iTEP_norm = mean(iTEP_norm),
+    # mean2_SDchange = mean(SDchange),
+    max2_iTEP_norm = max(iTEP_norm),
+    min2_iTEP_norm = min(iTEP_norm)
+  ) %>% mutate(
+    range1_iTEP_norm = max2_iTEP_norm-min2_iTEP_norm
+  )
+
+TEP_mean_150_250ms$is_lateral <- factor(TEP_mean_150_250ms$is_lateral)
+summary(TEP_mean_150_250ms)
+
+m.mean2_1 <- lmer(mean2_iTEP_norm ~ Condition + (1 | Patient), 
+                   data = TEP_mean_150_250ms,control = lmerControl(optimizer="bobyqa"))
+m.mean2_2 <- lmer(mean2_iTEP_norm ~ Condition + Condition:is_lateral + (1 | Patient), 
+                   data = TEP_mean_150_250ms,control = lmerControl(optimizer="bobyqa"))
+m.mean2_2.1 <- lmer(mean2_iTEP_norm ~ Condition + Condition:DKT + (1 | Patient), 
+                   data = TEP_mean_150_250ms,control = lmerControl(optimizer="bobyqa"))
+m.mean2_3 <- lmer(mean2_iTEP_norm ~ Condition + Condition:is_lateral + Condition:DKT + (1 | Patient), 
+                   data = TEP_mean_150_250ms,control = lmerControl(optimizer="bobyqa"))
+m.mean2_4 <- lmer(mean2_iTEP_norm ~ Condition * is_lateral * DKT+ (1 | Patient), 
+                   data = TEP_mean_150_250ms,control = lmerControl(optimizer="bobyqa"))
+summary(m.mean2_1)
+summary(m.mean2_2)
+summary(m.mean2_2.1)
+summary(m.mean2_3)
+summary(m.mean2_4)
+anova(m.mean2_1, m.mean2_2, m.mean2_3, m.mean2_4)
+anova(m.mean2_1, m.mean2_2.1)
+m.mean2 <- m.mean2_2
+summary(m.mean2)
+
+# left amy
+TEP_mean_150_250ms_L <- TEP_amy_avg_tvs %>% 
+  filter(Time >= 150 & Time <= 250 & DKT == "Left-Amygdala") %>% 
+  group_by(Patient,Condition,Channel,is_lateral) %>% 
+  summarise(
+    mean2_iTEP = mean(iTEP),
+    mean2_iTEP_norm = mean(iTEP_norm),
+    # mean2_SDchange = mean(SDchange),
+    max2_iTEP_norm = max(iTEP_norm),
+    min2_iTEP_norm = min(iTEP_norm)
+  ) %>% mutate(
+    range1_iTEP_norm = max2_iTEP_norm-min2_iTEP_norm
+  )
+
+TEP_mean_150_250ms_L$is_lateral <- factor(TEP_mean_150_250ms_L$is_lateral)
+summary(TEP_mean_150_250ms_L)
+
+m.mean2_L_1 <- lm(mean2_iTEP_norm ~ Condition, 
+                   data = TEP_mean_150_250ms_L)
+m.mean2_L_2 <- lm(mean2_iTEP_norm ~ Condition + Condition:is_lateral, 
+                   data = TEP_mean_150_250ms_L)
+summary(m.mean2_L_1)
+summary(m.mean2_L_2)
+
+# right amy
+TEP_mean_150_250ms_R <- TEP_amy_avg_tvs %>% 
+  filter(Time >= 150 & Time <= 250 & DKT == "Right-Amygdala") %>% 
+  group_by(Patient,Condition,Channel,is_lateral) %>% 
+  summarise(
+    mean2_iTEP = mean(iTEP),
+    mean2_iTEP_norm = mean(iTEP_norm),
+    # mean2_SDchange = mean(SDchange),
+    max2_iTEP_norm = max(iTEP_norm),
+    min2_iTEP_norm = min(iTEP_norm)
+  ) %>% mutate(
+    range1_iTEP_norm = max2_iTEP_norm-min2_iTEP_norm
+  )
+
+TEP_mean_150_250ms_R$is_lateral <- factor(TEP_mean_150_250ms_R$is_lateral)
+summary(TEP_mean_150_250ms_R)
+
+m.mean2_R_1 <- lm(mean2_iTEP_norm ~ Condition, 
+                   data = TEP_mean_150_250ms_R)
+m.mean2_R_2 <- lm(mean2_iTEP_norm ~ Condition + Condition:is_lateral, 
+                   data = TEP_mean_150_250ms_R)
+summary(m.mean2_R_1)
+summary(m.mean2_R_2)
+anova(m.mean2_R_1, m.mean2_R_2)
+m.mean2_R <- m.mean2_R_2
+summary(m.mean2_R)
+```
+
+```{r mean3: 300~450ms}
+# whole amy
+TEP_mean_300_450ms <- TEP_amy_avg_tvs %>% 
+  filter(Time >= 300 & Time <= 450) %>% 
+  group_by(Patient,Condition,Channel,DKT,is_lateral) %>% 
+  summarise(
+    mean3_iTEP = mean(iTEP),
+    mean3_iTEP_norm = mean(iTEP_norm),
+    # mean3_SDchange = mean(SDchange),
+    max3_iTEP_norm = max(iTEP_norm),
+    min3_iTEP_norm = min(iTEP_norm)
+  ) %>% mutate(
+    range1_iTEP_norm = max3_iTEP_norm-min3_iTEP_norm
+  )
+
+TEP_mean_300_450ms$is_lateral <- factor(TEP_mean_300_450ms$is_lateral)
+summary(TEP_mean_300_450ms)
+
+m.mean3_1 <- lmer(mean3_iTEP_norm ~ Condition + (1 | Patient), 
+                   data = TEP_mean_300_450ms,control = lmerControl(optimizer="bobyqa"))
+m.mean3_2 <- lmer(mean3_iTEP_norm ~ Condition + Condition:is_lateral + (1 | Patient), 
+                   data = TEP_mean_300_450ms,control = lmerControl(optimizer="bobyqa"))
+m.mean3_2.1 <- lmer(mean3_iTEP_norm ~ Condition + Condition:DKT + (1 | Patient), 
+                   data = TEP_mean_300_450ms,control = lmerControl(optimizer="bobyqa"))
+m.mean3_3 <- lmer(mean3_iTEP_norm ~ Condition + Condition:is_lateral + Condition:DKT + (1 | Patient), 
+                   data = TEP_mean_300_450ms,control = lmerControl(optimizer="bobyqa"))
+m.mean3_4 <- lmer(mean3_iTEP_norm ~ Condition * is_lateral * DKT+ (1 | Patient), 
+                   data = TEP_mean_300_450ms,control = lmerControl(optimizer="bobyqa"))
+summary(m.mean3_1)
+summary(m.mean3_2)
+summary(m.mean3_2.1)
+summary(m.mean3_3)
+summary(m.mean3_4)
+anova(m.mean3_1, m.mean3_2, m.mean3_3, m.mean3_4)
+anova(m.mean3_1, m.mean3_2.1)
+m.mean3 <- m.mean3_2
+summary(m.mean3)
+
+# left amy
+TEP_mean_300_450ms_L <- TEP_amy_avg_tvs %>% 
+  filter(Time >= 300 & Time <= 450 & DKT == "Left-Amygdala") %>% 
+  group_by(Patient,Condition,Channel,is_lateral) %>% 
+  summarise(
+    mean3_iTEP = mean(iTEP),
+    mean3_iTEP_norm = mean(iTEP_norm),
+    # mean3_SDchange = mean(SDchange),
+    max3_iTEP_norm = max(iTEP_norm),
+    min3_iTEP_norm = min(iTEP_norm)
+  ) %>% mutate(
+    range1_iTEP_norm = max3_iTEP_norm-min3_iTEP_norm
+  )
+
+TEP_mean_300_450ms_L$is_lateral <- factor(TEP_mean_300_450ms_L$is_lateral)
+summary(TEP_mean_300_450ms_L)
+
+m.mean3_L_1 <- lm(mean3_iTEP_norm ~ Condition, 
+                   data = TEP_mean_300_450ms_L)
+m.mean3_L_2 <- lm(mean3_iTEP_norm ~ Condition + Condition:is_lateral, 
+                   data = TEP_mean_300_450ms_L)
+summary(m.mean3_L_1)
+summary(m.mean3_L_2)
+
+# right amy
+TEP_mean_300_450ms_R <- TEP_amy_avg_tvs %>% 
+  filter(Time >= 300 & Time <= 450 & DKT == "Right-Amygdala") %>% 
+  group_by(Patient,Condition,Channel,is_lateral) %>% 
+  summarise(
+    mean3_iTEP = mean(iTEP),
+    mean3_iTEP_norm = mean(iTEP_norm),
+    # mean3_SDchange = mean(SDchange),
+    max3_iTEP_norm = max(iTEP_norm),
+    min3_iTEP_norm = min(iTEP_norm)
+  ) %>% mutate(
+    range1_iTEP_norm = max3_iTEP_norm-min3_iTEP_norm
+  )
+
+TEP_mean_300_450ms_R$is_lateral <- factor(TEP_mean_300_450ms_R$is_lateral)
+summary(TEP_mean_300_450ms_R)
+
+m.mean3_R_1 <- lm(mean3_iTEP_norm ~ Condition, 
+                   data = TEP_mean_300_450ms_R)
+m.mean3_R_2 <- lm(mean3_iTEP_norm ~ Condition + Condition:is_lateral, 
+                   data = TEP_mean_300_450ms_R)
+summary(m.mean3_R_1)
+summary(m.mean3_R_2)
+anova(m.mean3_R_1, m.mean3_R_2)
+m.mean3_R <- m.mean3_R_2
+summary(m.mean3_R)
+```
+
+## Statistics comparing tms and sham (with/without cutaneous)
+
+```{r Whole amygdala}
+timecourse <- TEP_amy_avg[[4]][527:951] # timewin: -250ms ~ 450 ms
+
+# TMS vs Sham, amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_tvs2_avg, Time == timecourse[i])
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_tvs2_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r Left amygdala}
+# Sham vs Sham2, amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_tvs2_avg, Time == timecourse[i] &
+                            DKT == "Left-Amygdala")
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_tvs2_L_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r Right amygdala}
+# Sham vs Sham2, amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_tvs2_avg, Time == timecourse[i] &
+                            DKT == "Right-Amygdala")
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_tvs2_R_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r medial amygdala}
+# Sham vs Sham2, amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_tvs2_avg, Time == timecourse[i] &
+                            is_lateral == 0)
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_tvs2_me_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r lateral amygdala}
+# Sham vs Sham2, amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_tvs2_avg, Time == timecourse[i] &
+                            is_lateral == 1)
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_tvs2_la_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r medial left amygdala}
+# Sham vs Sham2, amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_tvs2_avg, Time == timecourse[i] &
+                            is_lateral == 0 & DKT == "Left-Amygdala")
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_tvs2_L_me_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r medial right amygdala}
+# Sham vs Sham2, amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_tvs2_avg, Time == timecourse[i] &
+                            is_lateral == 0 & DKT == "Right-Amygdala")
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_tvs2_R_me_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r lateral left amygdala}
+# Sham vs Sham2, amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_tvs2_avg, Time == timecourse[i] &
+                            is_lateral == 1 & DKT == "Left-Amygdala")
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_tvs2_L_la_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r lateral right amygdala}
+# Sham vs Sham2, amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_tvs2_avg, Time == timecourse[i] &
+                            is_lateral == 1 & DKT == "Right-Amygdala")
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_tvs2_R_la_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+## Statistics comparing shams (with/without cutaneous)
+
+```{r Whole amygdala}
+timecourse <- TEP_amy_avg[[4]][527:951] # timewin: -250ms ~ 450 ms
+
+# TMS vs Sham, amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_sham_avg, Time == timecourse[i])
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_sham_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r Left amygdala}
+# Sham vs Sham2, amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_sham_avg, Time == timecourse[i] &
+                            DKT == "Left-Amygdala")
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_sham_L_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r Right amygdala}
+# Sham vs Sham2, amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_sham_avg, Time == timecourse[i] &
+                            DKT == "Right-Amygdala")
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_sham_R_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r medial amygdala}
+# Sham vs Sham2, amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_sham_avg, Time == timecourse[i] &
+                            is_lateral == 0)
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_sham_me_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r lateral amygdala}
+# Sham vs Sham2, amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_sham_avg, Time == timecourse[i] &
+                            is_lateral == 1)
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_sham_la_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r medial left amygdala}
+# Sham vs Sham2, amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_sham_avg, Time == timecourse[i] &
+                            is_lateral == 0 & DKT == "Left-Amygdala")
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_sham_L_me_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r medial right amygdala}
+# Sham vs Sham2, amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_sham_avg, Time == timecourse[i] &
+                            is_lateral == 0 & DKT == "Right-Amygdala")
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_sham_R_me_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r lateral left amygdala}
+# Sham vs Sham2, amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_sham_avg, Time == timecourse[i] &
+                            is_lateral == 1 & DKT == "Left-Amygdala")
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_sham_L_la_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+```{r lateral right amygdala}
+# Sham vs Sham2, amplitude
+coef_tvs <- data.frame()
+for (i in 1:length(timecourse)){
+  TEP_timepoint <- filter(TEP_amy_sham_avg, Time == timecourse[i] &
+                            is_lateral == 1 & DKT == "Right-Amygdala")
+  m.tvs <- lm(iTEP_norm ~ Condition, data = TEP_timepoint)
+  
+  coef_new <- 
+    summary(m.tvs)$coefficients %>% 
+    data.frame() %>% 
+    mutate(time = timecourse[i])
+  coef_tvs <- bind_rows(coef_tvs,coef_new)
+}
+slope_tvs <- coef_tvs[seq(0,nrow(coef_tvs),2),] %>% 
+  mutate(sig_tvs = ifelse(Pr...t..>0.05, 0, 1))
+
+# multiple comparison correction
+plist <- slope_tvs$Pr...t..
+plist_adj <- p.adjust(plist,  method ="BH") # FDR
+slope_tvs <- slope_tvs %>% mutate(corrected_sig_tvs = plist_adj)
+
+stats_amy_sham_R_la_sig <- slope_tvs %>% 
+  # mutate(is_sig = ifelse(sig_tvs == 1 & sig_tvf == 1, 1, 0))
+  mutate(is_sig = ifelse(corrected_sig_tvs < 0.05, 1, 0))
+```
+
+
+
+## Comparing ptp range
+
+```{r ptp1 100}
+# whole
+ptp1_amy <- 
+  filter(TEP_amy_avg, Time >= 0.025 & Time <= 0.050) %>% 
+  group_by(Patient, Condition, Channel) %>% 
+  summarise(range1 = max(iTEP_norm)-min(iTEP_norm))
+# ptp1_amy <- filter(ptp1_amy, Patient != "634")
+t.test(range1 ~ Condition, paired = T, data = filter(ptp1_amy, Condition != "fake"), alternative ="greater") # sig
+t.test(range1 ~ Condition, paired = T, data = filter(ptp1_amy, Condition != "tms"))
+# p.adjust(c(0.001901, 0.3861),  method ="bonferroni")
+
+# left
+ptp1_amy_L <- 
+  filter(TEP_amy_L_avg, Time >= 0.025 & Time <= 0.100) %>% 
+  group_by(Condition, Channel) %>% 
+  summarise(range1 = max(iTEP_norm)-min(iTEP_norm))
+# ptp1_amy_L <- filter(ptp1_amy_L, Patient != "634")
+t.test(range1 ~ Condition, paired = T, data = filter(ptp1_amy_L, Condition != "fake"), alternative ="greater")
+t.test(range1 ~ Condition, paired = T, data = filter(ptp1_amy_L, Condition != "tms"))
+# p.adjust(c(0.02654, 0.5375),  method ="BH")
+
+# right
+ptp1_amy_R <- 
+  filter(TEP_amy_R_avg, Time >= 0.025 & Time <= 0.100) %>% 
+  group_by(Patient, Condition, Channel) %>% 
+  summarise(range1 = max(iTEP_norm)-min(iTEP_norm))
+# ptp1_amy_R <- filter(ptp1_amy_R, Patient != "634")
+t.test(range1 ~ Condition, paired = T, data = filter(ptp1_amy_R, Condition != "fake"), alternative ="greater")
+t.test(range1 ~ Condition, paired = T, data = filter(ptp1_amy_R, Condition != "tms"))
+
+# medial
+ptp1_amy_me <- 
+  filter(TEP_amy_avg,  Time >= 0.025 & Time <= 0.100 & is_lateral == 0) %>% 
+  group_by(Patient, Condition, Channel) %>% 
+  summarise(range1 = max(iTEP_norm)-min(iTEP_norm))
+t.test(range1 ~ Condition, paired = T, data = filter(ptp1_amy_me, Condition != "fake"), alternative ="greater")
+t.test(range1 ~ Condition, paired = T, data = filter(ptp1_amy_me, Condition != "tms"))
+
+# lateral
+ptp1_amy_la <-
+  filter(TEP_amy_avg, Time >= 0.025 & Time <= 0.100 & is_lateral == 1) %>% 
+  group_by(Condition, Channel) %>% 
+  summarise(range1 = max(iTEP_norm)-min(iTEP_norm))
+t.test(range1 ~ Condition, paired = T, data = filter(ptp1_amy_la, Condition != "fake"), alternative ="greater")
+t.test(range1 ~ Condition, paired = T, data = filter(ptp1_amy_la, Condition != "tms"))
+
+ptp1_amy_mela <- 
+  filter(TEP_amy_avg, Time >= 0.025 & Time <= 0.100 & Condition == "tms") %>% 
+  group_by(is_lateral, Channel) %>% 
+  summarise(range1 = max(iTEP_norm)-min(iTEP_norm))
+# ptp1_amy_mela <- filter(ptp1_amy_mela, Channel != "429_LFPx123" & Channel != "634_LFPx55" & Channel != "634_LFPx56")
+t.test(range1 ~ is_lateral, data = ptp1_amy_mela, alternative ="greater")
+```
+
+```{r ptp2 150}
+# whole
+ptp2_amy <- 
+  filter(TEP_amy_avg, Time >= 0.070 & Time <= 0.180) %>% 
+  group_by(Patient, Condition, Channel) %>% 
+  summarise(range2 = max(iTEP_norm)-min(iTEP_norm))
+# ptp2_amy <- filter(ptp2_amy, Patient != "634")
+t.test(range2 ~ Condition, paired = T, data = filter(ptp2_amy, Condition != "fake"), alternative ="greater") # sig
+t.test(range2 ~ Condition, paired = T, data = filter(ptp2_amy, Condition != "tms"))
+# p.adjust(c(0.001901, 0.002139, 0.3861),  method ="bonferroni")
+
+# left
+ptp2_amy_L <- 
+  filter(TEP_amy_L_avg, Time >= 0.070 & Time <= 0.180) %>% 
+  group_by(Condition, Channel) %>% 
+  summarise(range2 = max(iTEP_norm)-min(iTEP_norm))
+# ptp2_amy_L <- filter(ptp2_amy_L, Patient != "634")
+t.test(range2 ~ Condition, paired = T, data = filter(ptp2_amy_L, Condition != "fake"), alternative ="greater")
+t.test(range2 ~ Condition, paired = T, data = filter(ptp2_amy_L, Condition != "tms"))
+
+# right
+ptp2_amy_R <- 
+  filter(TEP_amy_R_avg, Time >= 0.070 & Time <= 0.180) %>% 
+  group_by(Patient, Condition, Channel) %>% 
+  summarise(range2 = max(iTEP_norm)-min(iTEP_norm))
+# ptp2_amy_R <- filter(ptp2_amy_R, Patient != "634")
+t.test(range2 ~ Condition, paired = T, data = filter(ptp2_amy_R, Condition != "fake"), alternative ="greater")
+t.test(range2 ~ Condition, paired = T, data = filter(ptp2_amy_R, Condition != "tms"))
+
+
+# medial
+ptp2_amy_me <- 
+  filter(TEP_amy_avg,  Time >= 0.070 & Time <= 0.180 & is_lateral == 0) %>% 
+  group_by(Patient, Condition, Channel) %>% 
+  summarise(range2 = max(iTEP_norm)-min(iTEP_norm))
+t.test(range2 ~ Condition, paired = T, data = filter(ptp2_amy_me, Condition != "fake"), alternative ="greater")
+t.test(range2 ~ Condition, paired = T, data = filter(ptp2_amy_me, Condition != "tms"))
+
+# lateral
+ptp2_amy_la <-
+  filter(TEP_amy_avg, Time >= 0.070 & Time <= 0.180 & is_lateral == 1) %>% 
+  group_by(Condition, Channel) %>% 
+  summarise(range2 = max(iTEP_norm)-min(iTEP_norm))
+t.test(range2 ~ Condition, paired = T, data = filter(ptp2_amy_la, Condition != "fake"), alternative ="greater")
+t.test(range2 ~ Condition, paired = T, data = filter(ptp2_amy_la, Condition != "tms"))
+
+ptp2_amy_mela <- 
+  filter(TEP_amy_avg, Time >= 0.070 & Time <= 0.180 & Condition == "tms") %>% 
+  group_by(is_lateral, Channel) %>% 
+  summarise(range2 = max(iTEP_norm)-min(iTEP_norm))
+# ptp2_amy_mela <- filter(ptp2_amy_mela, Channel != "429_LFPx123" & Channel != "634_LFPx55" & Channel != "634_LFPx56")
+t.test(range2 ~ is_lateral, data = ptp2_amy_mela, alternative ="greater")
+```
+
+```{r ptp3 300}
+# whole
+ptp3_amy <- 
+  filter(TEP_amy_avg, Time >= 0.150 & Time <= 0.450) %>% 
+  group_by(Patient, Condition, Channel) %>% 
+  summarise(range3 = max(iTEP_norm)-min(iTEP_norm))
+# ptp3_amy <- filter(ptp3_amy, Patient != "634")
+t.test(range3 ~ Condition, paired = T, data = filter(ptp3_amy, Condition != "fake"), alternative ="greater") # sig
+t.test(range3 ~ Condition, paired = T, data = filter(ptp3_amy, Condition != "tms"))
+# p.adjust(c(0.001901, 0.002139, 0.3861),  method ="bonferroni")
+
+# left
+ptp3_amy_L <- 
+  filter(TEP_amy_L_avg, Time >= 0.150 & Time <= 0.450) %>% 
+  group_by(Condition, Channel) %>% 
+  summarise(range3 = max(iTEP_norm)-min(iTEP_norm))
+# ptp3_amy_L <- filter(ptp3_amy_L, Patient != "634")
+t.test(range3 ~ Condition, paired = T, data = filter(ptp3_amy_L, Condition != "fake"), alternative ="greater")
+t.test(range3 ~ Condition, paired = T, data = filter(ptp3_amy_L, Condition != "tms"))
+
+# right
+ptp3_amy_R <- 
+  filter(TEP_amy_R_avg, Time >= 0.150 & Time <= 0.450) %>% 
+  group_by(Patient, Condition, Channel) %>% 
+  summarise(range3 = max(iTEP_norm)-min(iTEP_norm))
+# ptp3_amy_R <- filter(ptp3_amy_R, Patient != "634")
+t.test(range3 ~ Condition, paired = T, data = filter(ptp3_amy_R, Condition != "fake"), alternative ="greater")
+t.test(range3 ~ Condition, paired = T, data = filter(ptp3_amy_R, Condition != "tms"))
+
+# medial
+ptp3_amy_me <- 
+  filter(TEP_amy_avg,  Time >= 0.150 & Time <= 0.450 & is_lateral == 0) %>% 
+  group_by(Patient, Condition, Channel) %>% 
+  summarise(range3 = max(iTEP_norm)-min(iTEP_norm))
+t.test(range3 ~ Condition, paired = T, data = filter(ptp3_amy_me, Condition != "fake"), alternative ="greater")
+t.test(range3 ~ Condition, paired = T, data = filter(ptp3_amy_me, Condition != "tms"))
+
+# lateral
+ptp3_amy_la <-
+  filter(TEP_amy_avg, Time >= 0.150 & Time <= 0.450 & is_lateral == 1) %>% 
+  group_by(Condition, Channel) %>% 
+  summarise(range3 = max(iTEP_norm)-min(iTEP_norm))
+t.test(range3 ~ Condition, paired = T, data = filter(ptp3_amy_la, Condition != "fake"), alternative ="greater")
+t.test(range3 ~ Condition, paired = T, data = filter(ptp3_amy_la, Condition != "tms"))
+
+ptp3_amy_mela <- 
+  filter(TEP_amy_avg, Time >= 0.150 & Time <= 0.450 & Condition == "tms") %>% 
+  group_by(is_lateral, Channel) %>% 
+  summarise(range3 = max(iTEP_norm)-min(iTEP_norm))
+# ptp3_amy_mela <- filter(ptp3_amy_mela, Channel != "429_LFPx123" & Channel != "634_LFPx55" & Channel != "634_LFPx56")
+t.test(range3 ~ is_lateral, data = ptp3_amy_mela, alternative ="greater")
+```
+
+
+### Latency N150
+
+```{r N150 latency mela}
+TEP_amy_avg %>% 
+  filter(is_lateral == 0 & Condition == "tms" & Time > 0.100 & Time <= 0.300) %>%
+  group_by(Channel) %>% 
+  summarise(
+    peakN150 = min(iTEP_norm)
+  ) %>% left_join(filter(TEP_amy_avg, is_lateral == 0 & Condition == "tms" & Time > 0.100 & Time <= 0.300)) %>% 
+  filter(iTEP_norm == peakN150)
+  
+```
+
+
+## ptp ~ RSFC
+
+```{r amy whole}
+# setwd("C:/Users/xjl19/Desktop/TMS-iEEG/Stanford_Processed/TEP")
+FC_TEP_corr <- read.csv(paste0(rootpath,"/FC_corr/FC_TEP_corr_L-DLPFC_amy.csv"))
+
+FC_TEP_corr <- filter(FC_TEP_corr, Patient != 672 & 
+                    Channel != "593_LFPx183" &
+                    Channel != "593_LFPx184" &
+                    Channel != "593_LFPx185" &
+                    Channel != "593_LFPx231" &
+                    Channel != "430_LFPx14" )
+FC_TEP_corr <- FC_TEP_corr %>% mutate(abs_z = abs(z_lDLPFC_0_5Hz))
+
+# ptp1_amy_wide <- ptp1_amy %>% 
+#   pivot_wider(names_from = Condition, values_from = range1) %>% 
+#   mutate(range1_tvs = tms-sham)
+# ptp2_amy_wide <- ptp2_amy %>% 
+#   pivot_wider(names_from = Condition, values_from = range2) %>% 
+#   mutate(range2_tvs = tms-sham)
+
+# meanSD1 <- TEP_amy_avg %>% filter(Condition == "tms" & Time >= .026 & Time <= .110) %>%
+#   group_by(Channel) %>% summarise(meanSD1 = mean(SDchange),
+#                                   peakSD1 = max(SDchange))
+# meanSD2 <- TEP_amy_avg %>% filter(Condition == "tms" & Time >= .130 & Time <= .294) %>%
+#   group_by(Channel) %>% summarise(meanSD2 = mean(SDchange),
+#                                   peakSD2 = max(SDchange))
+# meanSD3 <- TEP_amy_avg %>% filter(Condition == "tms" & Time >= .324 & Time <= .416) %>%
+#   group_by(Channel) %>% summarise(meanSD3 = mean(SDchange),
+#                                   peakSD3 = max(SDchange))
+# meanSDall <- TEP_amy_avg %>% filter(is_lateral == 0 & Condition == "tms" & Time >=.026 & Time <=.450) %>%
+#   group_by(Channel) %>% summarise(meanSDall = mean(SDchange),
+#                                   peakSDall = max(SDchange))
+# 
+# 
+# TEP_amy_tvs_corr <- TEP_amy_avg[c(1:4,9:12)] %>% 
+#   pivot_wider(names_from = Condition, values_from = SDchange)
+# meanSD1_tvs <- TEP_amy_tvs_corr %>% filter(Time >= .026 & Time <= .110) %>%
+#   mutate(meanSD1_tvs = tms-sham) %>% group_by(Channel) %>% 
+#   summarise(meanSD1_tvs = mean(meanSD1_tvs))
+# meanSD2_tvs <- TEP_amy_tvs_corr %>% filter(Time >= .130 & Time <= .294) %>%
+#   mutate(meanSD2_tvs = tms-sham) %>% group_by(Channel) %>% 
+#   summarise(meanSD2_tvs = mean(meanSD2_tvs))
+# meanSD3_tvs <- TEP_amy_tvs_corr %>% filter(Time >= .324 & Time <= .416) %>%
+#   mutate(meanSD3_tvs = tms-sham) %>% group_by(Channel) %>% 
+#   summarise(meanSD3_tvs = mean(meanSD3_tvs))
+# meanSDall_tvs <- TEP_amy_tvs_corr %>% filter(is_lateral == 0 & Time >=.026 & Time <=.450) %>%
+#   mutate(meanSDall_tvs = tms-sham) %>% group_by(Channel) %>% 
+#   summarise(meanSDall_tvs = mean(meanSDall_tvs))
+  
+meannorm1 <- TEP_amy_avg %>% filter(Condition == "tms" & Time >= 30 & Time <= 100) %>%
+  group_by(Channel) %>% summarise(meannorm1 = mean(iTEP_norm))
+meannorm2 <- TEP_amy_avg %>% filter(Condition == "tms" & Time >= 150 & Time <= 250) %>%
+  group_by(Channel) %>% summarise(meannorm2 = mean(iTEP_norm))
+meannorm3 <- TEP_amy_avg %>% filter(Condition == "tms" & Time >= 300 & Time <= 450) %>%
+  group_by(Channel) %>% summarise(meannorm3 = mean(iTEP_norm))
+
+meannorm_sig1 <- TEP_amy_avg %>% filter(Condition == "tms" & Time >= 48 & Time <= 79) %>%
+  group_by(Channel) %>% summarise(meannorm_sig1 = mean(iTEP_norm))
+meannorm_sig2 <- TEP_amy_avg %>% filter(Condition == "tms" & Time >= 189 & Time <= 267) %>%
+  group_by(Channel) %>% summarise(meannorm_sig2 = mean(iTEP_norm))
+meannorm_sig3 <- TEP_amy_avg %>% filter(Condition == "tms" & Time >= 333 & Time <= 430) %>%
+  filter(Time >= 385 | Time <= 348) %>%
+  group_by(Channel) %>% summarise(meannorm_sig3 = mean(iTEP_norm))
+
+peak1 <- TEP_amy_avg %>% filter(Condition == "tms" & Time >= 30 & Time <= 100) %>%
+  group_by(Channel) %>% summarise(peak1 = max(iTEP_norm))
+peak2 <- TEP_amy_avg %>% filter(Condition == "tms" & Time >= 150 & Time <= 250) %>%
+  group_by(Channel) %>% summarise(peak2 = min(iTEP_norm))
+peak3 <- TEP_amy_avg %>% filter(Condition == "tms" & Time >= 300 & Time <= 450) %>%
+  group_by(Channel) %>% summarise(peak3 = max(iTEP_norm))
+
+FC_TEP_corr <- FC_TEP_corr %>% 
+  # left_join(filter(ptp1_amy, Condition == "tms")[c(3,4)]) %>% 
+  # left_join(ptp1_amy_wide[c(2,6)]) %>% 
+  # left_join(filter(ptp2_amy, Condition == "tms")[c(3,4)]) %>% 
+  # left_join(ptp2_amy_wide[c(2,6)]) %>% 
+  # left_join(meanSD1) %>% 
+  # left_join(meanSD2) %>% 
+  # left_join(meanSD3) %>% 
+  # left_join(meanSDall) %>% 
+  # left_join(meanSD1_tvs) %>% 
+  # left_join(meanSD2_tvs) %>% 
+  # left_join(meanSD3_tvs) %>% 
+  # left_join(meanSDall_tvs) %>% 
+  # left_join(meannorm1) %>% 
+  # left_join(meannorm2) %>% 
+  # left_join(meannorm3) %>% 
+  # left_join(meannorm_sig1) %>% 
+  # left_join(meannorm_sig2) %>% 
+  # left_join(meannorm_sig3) %>% 
+  left_join(peak1) %>% left_join(peak2) %>% left_join(peak3)
+
+FC_TEP_corr <- FC_TEP_corr %>% 
+  mutate(is_right = ifelse(DKT == "Right-Amygdala", 1, 0)) %>% 
+  mutate(is_medial = ifelse(is_lateral == 0, 1, 0))
+  
+  
+# FC_TEP_AMY_corr <- FC_TEP_corr %>% 
+#   filter(is.na(range1) == 0)
+# write.csv(FC_TEP_AMY_corr, "C:/Users/xjl19/Desktop/TMS-iEEG/fMRI_connectivity/FC_TEP_AMY_corr.csv")
+
+setwd("C:/Users/xjl19/Desktop/TMS-iEEG/all_Figures")
+# corr analysis
+labels = c('rs-FC (z)','N/P70 range','N/P70 range TMS-Sham',
+           'N/P150 range','N/P150 range TMS-Sham',
+           'Mean abs SD (25~110ms)','Peak abs SD (25~110ms)',
+           'Mean abs SD (130~294ms)','Peak abs SD (130~294ms)',
+           'Mean abs SD (324~416ms)','Peak abs SD (324~416ms)',
+           'Mean abs SD (25~450ms)','Peak abs SD (25~450ms)',
+           'Mean abs SD TMS-Sham (25~110ms)', 'Mean abs SD TMS-Sham (130~294ms)',
+           'Mean abs SD TMS-Sham (324~416ms)','Mean abs SD TMS-Sham (25~450ms)',
+           'Mean SD (25~100ms)','Mean SD (150~250ms)','Mean SD (300~400ms)','Mean SD (230~250ms)')
+column <- c(5,7:13)
+correlation <- corr.test(FC_TEP_corr[,column], method="pearson",adjust="fdr")
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+# png(filename ='pearson_wholeAMY_r.png', width =5000,height=5000, units = "px", res=500)
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  # labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Amygdala Pearson's r")
+# dev.off()
+
+correlation <- corr.test(FC_TEP_corr[,column], method="spearman",adjust="fdr")
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+# png(filename ='pearson_wholeAMY_rho.png', width =5000,height=5000, units = "px", res=500)
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  # labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Amygdala Spearman's ??")
+dev.off()
+
+```
+
+
+```{r amy medial}
+# FC_TEP_mela_corr <- FC_TEP_AMY_corr[1:15]
+# Channel_mela <- TEP_amy_avg %>% group_by(Channel) %>% 
+#   summarise(is_lateral = mean(is_lateral))
+# FC_TEP_mela_corr <- FC_TEP_mela_corr %>% left_join(Channel_mela)
+FC_TEP_me_corr <- FC_TEP_corr[1:7] %>% filter(is_lateral == 0)
+
+
+# meanSD1 <- TEP_amy_avg %>% filter(is_lateral == 0 & Condition == "tms" & Time >=.026 & Time <=.106) %>%
+#   group_by(Channel) %>% summarise(meanSD1 = mean(SDchange),
+#                                   peakSD1 = max(SDchange))
+# meanSD2 <- TEP_amy_avg %>% filter(is_lateral == 0 & Condition == "tms" & Time >=.128 & Time <=.290) %>%
+#   group_by(Channel) %>% summarise(meanSD2 = mean(SDchange),
+#                                   peakSD2 = max(SDchange))
+# meanSD3 <- TEP_amy_avg %>% filter(is_lateral == 0 & Condition == "tms" & Time >=.332 & Time <=.404) %>%
+#   group_by(Channel) %>% summarise(meanSD3 = mean(SDchange),
+#                                   peakSD3 = max(SDchange))
+# meanSDall <- TEP_amy_avg %>% filter(is_lateral == 0 & Condition == "tms" & Time >=.026 & Time <=.450) %>%
+#   group_by(Channel) %>% summarise(meanSDall = mean(SDchange),
+#                                   peakSDall = max(SDchange))
+# 
+# TEP_amy_tvs_corr <- TEP_amy_avg[c(1:4,9:12)] %>% 
+#   pivot_wider(names_from = Condition, values_from = SDchange)
+# meanSD1_tvs <- TEP_amy_tvs_corr %>% filter(is_lateral == 0 & Time >=.026 & Time <=.106) %>%
+#   mutate(meanSD1_tvs = tms-sham) %>% group_by(Channel) %>% 
+#   summarise(meanSD1_tvs = mean(meanSD1_tvs))
+# meanSD2_tvs <- TEP_amy_tvs_corr %>% filter(is_lateral == 0 & Time >=.128 & Time <=.290) %>%
+#   mutate(meanSD2_tvs = tms-sham) %>% group_by(Channel) %>% 
+#   summarise(meanSD2_tvs = mean(meanSD2_tvs))
+# meanSD3_tvs <- TEP_amy_tvs_corr %>% filter(is_lateral == 0 & Time >=.332 & Time <=.404) %>%
+#   mutate(meanSD3_tvs = tms-sham) %>% group_by(Channel) %>% 
+#   summarise(meanSD3_tvs = mean(meanSD3_tvs))
+# meanSDall_tvs <- TEP_amy_tvs_corr %>% filter(is_lateral == 0 & Time >=.026 & Time <=.450) %>%
+#   mutate(meanSDall_tvs = tms-sham) %>% group_by(Channel) %>% 
+#   summarise(meanSDall_tvs = mean(meanSDall_tvs))
+  
+meannorm1 <- TEP_amy_avg %>% filter(is_lateral == 0 & Condition == "tms" & Time >= 30 & Time <= 100) %>%
+  group_by(Channel) %>% summarise(meannorm1 = mean(iTEP_norm))
+meannorm2 <- TEP_amy_avg %>% filter(is_lateral == 0 & Condition == "tms" & Time >= 150 & Time <= 250) %>%
+  group_by(Channel) %>% summarise(meannorm2 = mean(iTEP_norm))
+meannorm3 <- TEP_amy_avg %>% filter(is_lateral == 0 & Condition == "tms" & Time >= 300 & Time <= 450) %>%
+  group_by(Channel) %>% summarise(meannorm3 = mean(iTEP_norm))
+
+meannorm_sig1 <- TEP_amy_avg %>% 
+  filter(is_lateral == 0 & Condition == "tms" & Time >= 51 & Time <= 81) %>%
+  group_by(Channel) %>% summarise(meannorm_sig1 = mean(iTEP_norm))
+meannorm_sig2 <- TEP_amy_avg %>% 
+  filter(is_lateral == 0 & Condition == "tms" & Time >= 164 & Time <= 244) %>%
+  group_by(Channel) %>% summarise(meannorm_sig2 = mean(iTEP_norm))
+meannorm_sig3 <- TEP_amy_avg %>% 
+  filter(is_lateral == 0 & Condition == "tms" & Time >= 333 & Time <= 358) %>%
+  group_by(Channel) %>% summarise(meannorm_sig3 = mean(iTEP_norm))
+
+FC_TEP_me_corr <- FC_TEP_me_corr %>% 
+  # left_join(filter(ptp1_amy, Condition == "tms")[c(3,4)]) %>% 
+  # left_join(ptp1_amy_wide[c(2,6)]) %>% 
+  # left_join(filter(ptp2_amy, Condition == "tms")[c(3,4)]) %>% 
+  # left_join(ptp2_amy_wide[c(2,6)]) %>% 
+  # left_join(meanSD1) %>% 
+  # left_join(meanSD2) %>% 
+  # left_join(meanSD3) %>% 
+  # left_join(meanSDall) %>% 
+  # left_join(meanSD1_tvs) %>% 
+  # left_join(meanSD2_tvs) %>% 
+  # left_join(meanSD3_tvs) %>% 
+  # left_join(meanSDall_tvs) %>% 
+  left_join(meannorm1) %>% 
+  left_join(meannorm2) %>% 
+  left_join(meannorm3) %>% 
+  left_join(meannorm_sig1) %>% 
+  left_join(meannorm_sig2) %>% 
+  left_join(meannorm_sig3)
+# write.csv(FC_TEP_me_corr, "C:/Users/xjl19/Desktop/TMS-iEEG/fMRI_connectivity/FC_TEP_me_corr.csv")
+
+# corr analysis
+labels = c('rs-FC (z)','N/P70 range','N/P70 range TMS-Sham','N/P150 range','N/P150 range TMS-Sham',
+           'Mean abs SD (25~106ms)','Peak abs SD (25~106ms)',
+           'Mean abs SD (128~290ms)','Peak abs SD (128~290ms)',
+           'Mean abs SD (332~404ms)','Peak abs SD (332~404ms)',
+           'Mean abs SD (25~450ms)','Peak abs SD (25~450ms)',
+           'Mean abs SD TMS-Sham (25~106ms)', 'Mean abs SD TMS-Sham (128~290ms)',
+           'Mean abs SD TMS-Sham (332~404ms)','Mean abs SD TMS-Sham (25~450ms)',
+           'Mean SD (25~100ms)','Mean SD (150~250ms)','Mean SD (300~400ms)','Mean SD (178~204ms)')
+column <- c(5,7:13)
+correlation <- corr.test(FC_TEP_me_corr[,column], method="pearson",adjust="fdr")
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+# png(filename ='pearson_meAMY_r.png', width =5000,height=5000, units = "px", res=500)
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  # labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Medial Amygdala Pearson's r")
+dev.off()
+
+correlation <- corr.test(FC_TEP_me_corr[,column], method="spearman",adjust="fdr")
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+png(filename ='pearson_meAMY_rho.png', width =5000,height=5000, units = "px", res=500)
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Medial Amygdala Spearman's ??")
+dev.off()
+
+
+```
+
+```{r amy Lateral}
+FC_TEP_la_corr <- FC_TEP_corr %>% filter(is_lateral == 1)
+
+# meanSD2 <- TEP_amy_avg %>% filter(is_lateral == 1 & Condition == "tms" & Time >=.152 & Time <=.208) %>%
+#   group_by(Channel) %>% summarise(meanSD2 = mean(SDchange),
+#                                   peakSD2 = max(SDchange))
+# meanSD3 <- TEP_amy_avg %>% filter(is_lateral == 1 & Condition == "tms" & Time >=.330 & Time <=.410) %>%
+#   group_by(Channel) %>% summarise(meanSD3 = mean(SDchange),
+#                                   peakSD3 = max(SDchange))
+# meanSDall <- TEP_amy_avg %>% filter(is_lateral == 1 & Condition == "tms" & Time >=.026 & Time <=.450) %>%
+#   group_by(Channel) %>% summarise(meanSDall = mean(SDchange),
+#                                   peakSDall = max(SDchange))
+# 
+# meanSD2_tvs <- TEP_amy_tvs_corr %>% filter(is_lateral == 1 & Time >=.152 & Time <=.208) %>%
+#   mutate(meanSD2_tvs = tms-sham) %>% group_by(Channel) %>% 
+#   summarise(meanSD2_tvs = mean(meanSD2_tvs))
+# meanSD3_tvs <- TEP_amy_tvs_corr %>% filter(is_lateral == 1 & Time >=.330 & Time <=.410) %>%
+#   mutate(meanSD3_tvs = tms-sham) %>% group_by(Channel) %>% 
+#   summarise(meanSD3_tvs = mean(meanSD3_tvs))
+# meanSDall_tvs <- TEP_amy_tvs_corr %>% filter(is_lateral == 1 & Time >=.026 & Time <=.450) %>%
+#   mutate(meanSDall_tvs = tms-sham) %>% group_by(Channel) %>% 
+#   summarise(meanSDall_tvs = mean(meanSDall_tvs))
+  
+meannorm1 <- TEP_amy_avg %>% filter(is_lateral == 1 & Condition == "tms" & Time >= 26 & Time <= 100) %>%
+  group_by(Channel) %>% summarise(meannorm1 = mean(iTEP_norm))
+meannorm2 <- TEP_amy_avg %>% filter(is_lateral == 1 & Condition == "tms" & Time >= 150 & Time <= 250) %>%
+  group_by(Channel) %>% summarise(meannorm2 = mean(iTEP_norm))
+meannorm3 <- TEP_amy_avg %>% filter(is_lateral == 1 & Condition == "tms" & Time >= 300 & Time <= 450) %>%
+  group_by(Channel) %>% summarise(meannorm3 = mean(iTEP_norm))
+
+meannorm_sig1 <- TEP_amy_avg %>% filter(is_lateral == 1 & Condition == "tms" & Time >= 48 & Time <= 79) %>%
+  group_by(Channel) %>% summarise(meannorm_sig1 = mean(iTEP_norm))
+meannorm_sig2 <- TEP_amy_avg %>% filter(is_lateral == 1 & Condition == "tms" & Time >= 189 & Time <= 267) %>%
+  group_by(Channel) %>% summarise(meannorm_sig2 = mean(iTEP_norm))
+meannorm_sig3 <- TEP_amy_avg %>% filter(is_lateral == 1 & Condition == "tms" & Time >= 333 & Time <= 430) %>%
+  filter(Time >= 385 | Time <= 348) %>%
+  group_by(Channel) %>% summarise(meannorm_sig3 = mean(iTEP_norm))
+
+FC_TEP_la_corr <- FC_TEP_la_corr %>% 
+  # left_join(filter(ptp1_amy, Condition == "tms")[c(3,4)]) %>% 
+  # left_join(ptp1_amy_wide[c(2,6)]) %>% 
+  # left_join(filter(ptp2_amy, Condition == "tms")[c(3,4)]) %>% 
+  # left_join(ptp2_amy_wide[c(2,6)]) %>% 
+  # left_join(meanSD1) %>% 
+  # left_join(meanSD2) %>% 
+  # left_join(meanSD3) %>% 
+  # left_join(meanSDall) %>% 
+  # left_join(meanSD1_tvs) %>% 
+  # left_join(meanSD2_tvs) %>% 
+  # left_join(meanSD3_tvs) %>% 
+  # left_join(meanSDall_tvs) %>% 
+  left_join(meannorm1) %>% 
+  left_join(meannorm2) %>% 
+  left_join(meannorm3) %>% 
+  left_join(meannorm_sig1) %>% 
+  left_join(meannorm_sig2) %>% 
+  left_join(meannorm_sig3)
+# write.csv(FC_TEP_la_corr, "C:/Users/xjl19/Desktop/TMS-iEEG/fMRI_connectivity/FC_TEP_la_corr.csv")
+
+
+# corr analysis
+labels = c('rs-FC (z)','N/P70 range','N/P70 range TMS-Sham','N/P150 range','N/P150 range TMS-Sham',
+           'Mean abs SD (152~208ms)','Peak abs SD (152~208ms)',
+           'Mean abs SD (330~410ms)','Peak abs SD (330~410ms)',
+           'Mean abs SD (25~450ms)','Peak abs SD (25~450ms)',
+           'Mean abs SD TMS-Sham 152~208ms)', 'Mean abs SD TMS-Sham (330~410ms)',
+           'Mean abs SD TMS-Sham (25~450ms)',
+           'Mean SD (25~100ms)','Mean SD (150~250ms)','Mean SD (300~400ms)','Mean SD (240~262ms)')
+column <- c(10, 12:15,17:29)
+correlation <- corr.test(FC_TEP_la_corr[,column], method="pearson",adjust="fdr")
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+png(filename ='pearson_laAMY_r.png', width =5000,height=5000, units = "px", res=500)
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Lateral Amygdala Pearson's r")
+dev.off()
+
+correlation <- corr.test(FC_TEP_la_corr[,column], method="spearman",adjust="fdr")
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+png(filename ='pearson_laAMY_rho.png', width =5000,height=5000, units = "px", res=500)
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Lateral Amygdala Spearman's ??")
+dev.off()
+
+
+```
+
+
+```{r amy Left}
+FC_TEP_L_corr <- FC_TEP_AMY_corr[1:15] %>% filter(DKT_label == "Left-Amygdala")
+
+meanSD2 <- TEP_amy_avg %>% filter(DKT == "Left-Amygdala" & Condition == "tms" & Time >=.138 & Time <=.290) %>%
+  group_by(Channel) %>% summarise(meanSD2 = mean(SDchange),
+                                  peakSD2 = max(SDchange))
+meanSD3 <- TEP_amy_avg %>% filter(DKT == "Left-Amygdala" & Condition == "tms" & Time >=.332 & Time <=.406) %>%
+  group_by(Channel) %>% summarise(meanSD3 = mean(SDchange),
+                                  peakSD3 = max(SDchange))
+meanSDall <- TEP_amy_avg %>% filter(DKT == "Left-Amygdala" & Condition == "tms" & Time >=.026 & Time <=.450) %>%
+  group_by(Channel) %>% summarise(meanSDall = mean(SDchange),
+                                  peakSDall = max(SDchange))
+
+meanSD2_tvs <- TEP_amy_tvs_corr %>% filter(DKT == "Left-Amygdala" & Time >=.138 & Time <=.290) %>%
+  mutate(meanSD2_tvs = tms-sham) %>% group_by(Channel) %>% 
+  summarise(meanSD2_tvs = mean(meanSD2_tvs))
+meanSD3_tvs <- TEP_amy_tvs_corr %>% filter(DKT == "Left-Amygdala" & Time >=.332 & Time <=.406) %>%
+  mutate(meanSD3_tvs = tms-sham) %>% group_by(Channel) %>% 
+  summarise(meanSD3_tvs = mean(meanSD3_tvs))
+meanSDall_tvs <- TEP_amy_tvs_corr %>% filter(DKT == "Left-Amygdala" & Time >=.026 & Time <=.450) %>%
+  mutate(meanSDall_tvs = tms-sham) %>% group_by(Channel) %>% 
+  summarise(meanSDall_tvs = mean(meanSDall_tvs))
+  
+meannorm1 <- TEP_amy_avg %>% filter(DKT == "Left-Amygdala" & Condition == "tms" & Time >= .026 & Time <= .100) %>%
+  group_by(Channel) %>% summarise(meannorm1 = mean(SDchange))
+meannorm2 <- TEP_amy_avg %>% filter(DKT == "Left-Amygdala" & Condition == "tms" & Time >= .150 & Time <= .250) %>%
+  group_by(Channel) %>% summarise(meannorm2 = mean(SDchange))
+meannorm3 <- TEP_amy_avg %>% filter(DKT == "Left-Amygdala" & Condition == "tms" & Time >= .300 & Time <= .400) %>%
+  group_by(Channel) %>% summarise(meannorm3 = mean(SDchange))
+
+FC_TEP_L_corr <- FC_TEP_L_corr %>% 
+  left_join(meanSD2) %>% left_join(meanSD3) %>% left_join(meanSDall) %>% 
+  left_join(meanSD2_tvs) %>% left_join(meanSD3_tvs) %>% left_join(meanSDall_tvs) %>% 
+  left_join(meannorm1) %>% left_join(meannorm2) %>% left_join(meannorm3)
+write.csv(FC_TEP_L_corr, "C:/Users/xjl19/Desktop/TMS-iEEG/fMRI_connectivity/FC_TEP_L_corr.csv")
+
+
+# corr analysis
+labels = c('rs-FC (z)','N/P70 range','N/P70 range TMS-Sham','N/P150 range','N/P150 range TMS-Sham',
+           'Mean abs SD (138~290ms)','Peak abs SD (138~290ms)',
+           'Mean abs SD (332~406ms)','Peak abs SD (332~406ms)',
+           'Mean abs SD (25~450ms)','Peak abs SD (25~450ms)',
+           'Mean abs SD TMS-Sham (138~290ms)',
+           'Mean abs SD TMS-Sham (332~404ms)','Mean abs SD TMS-Sham (25~450ms)',
+           'Mean SD (25~100ms)','Mean SD (150~250ms)','Mean SD (300~400ms)')
+column <- c(10, 12:27)
+correlation <- corr.test(FC_TEP_L_corr[,column], method="pearson",adjust="fdr")
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+# png(filename ='pearson_LAMY_r.png', width =5000,height=5000, units = "px", res=500)
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Left Amygdala Pearson's r")
+# dev.off()
+
+correlation <- corr.test(FC_TEP_L_corr[,column], method="spearman",adjust="fdr")
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+# png(filename ='pearson_LAMY_rho.png', width =5000,height=5000, units = "px", res=500)
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Left Amygdala Spearman's ??")
+# dev.off()
+
+```
+
+
+```{r amy Right}
+FC_TEP_R_corr <- FC_TEP_corr[1:7] %>% filter(DKT == "Right-Amygdala")
+
+# meanSD1 <- TEP_amy_avg %>% filter(DKT == "Right-Amygdala" & Condition == "tms" & Time >=.026 & Time <=.114) %>%
+#   group_by(Channel) %>% summarise(meanSD1 = mean(SDchange),
+#                                   peakSD1 = max(SDchange))
+# meanSD2 <- TEP_amy_avg %>% filter(DKT == "Right-Amygdala" & Condition == "tms" & Time >=.138 & Time <=.202) %>%
+#   group_by(Channel) %>% summarise(meanSD2 = mean(SDchange),
+#                                   peakSD2 = max(SDchange))
+# meanSD3 <- TEP_amy_avg %>% filter(DKT == "Right-Amygdala" & Condition == "tms" & Time >=.326 & Time <=.406) %>%
+#   group_by(Channel) %>% summarise(meanSD3 = mean(SDchange),
+#                                   peakSD3 = max(SDchange))
+# meanSDall <- TEP_amy_avg %>% filter(DKT == "Right-Amygdala" & Condition == "tms" & Time >=.026 & Time <=.450) %>%
+#   group_by(Channel) %>% summarise(meanSDall = mean(SDchange),
+#                                   peakSDall = max(SDchange))
+# 
+# TEP_amy_tvs_corr <- TEP_amy_avg[c(1:4,9:12)] %>% 
+#   pivot_wider(names_from = Condition, values_from = SDchange)
+# meanSD1_tvs <- TEP_amy_tvs_corr %>% filter(DKT == "Right-Amygdala" & Time >=.026 & Time <=.114) %>%
+#   mutate(meanSD1_tvs = tms-sham) %>% group_by(Channel) %>% 
+#   summarise(meanSD1_tvs = mean(meanSD1_tvs))
+# meanSD2_tvs <- TEP_amy_tvs_corr %>% filter(DKT == "Right-Amygdala" & Time >=.138 & Time <=.202) %>%
+#   mutate(meanSD2_tvs = tms-sham) %>% group_by(Channel) %>% 
+#   summarise(meanSD2_tvs = mean(meanSD2_tvs))
+# meanSD3_tvs <- TEP_amy_tvs_corr %>% filter(DKT == "Right-Amygdala" & Time >=.326 & Time <=.406) %>%
+#   mutate(meanSD3_tvs = tms-sham) %>% group_by(Channel) %>% 
+#   summarise(meanSD3_tvs = mean(meanSD3_tvs))
+# meanSDall_tvs <- TEP_amy_tvs_corr %>% filter(DKT == "Right-Amygdala" & Time >=.026 & Time <=.450) %>%
+#   mutate(meanSDall_tvs = tms-sham) %>% group_by(Channel) %>% 
+#   summarise(meanSDall_tvs = mean(meanSDall_tvs))
+  
+meannorm1 <- TEP_amy_avg %>% filter(DKT == "Right-Amygdala" & Condition == "tms" & Time >= 26 & Time <= 100) %>%
+  group_by(Channel) %>% summarise(meannorm1 = mean(iTEP_norm))
+meannorm2 <- TEP_amy_avg %>% filter(DKT == "Right-Amygdala" & Condition == "tms" & Time >= 150 & Time <= 250) %>%
+  group_by(Channel) %>% summarise(meannorm2 = mean(iTEP_norm))
+meannorm3 <- TEP_amy_avg %>% filter(DKT == "Right-Amygdala" & Condition == "tms" & Time >= 300 & Time <= 450) %>%
+  group_by(Channel) %>% summarise(meannorm3 = mean(iTEP_norm))
+
+meannorm_sig1 <- TEP_amy_avg %>% filter(DKT == "Right-Amygdala" & Condition == "tms" & Time >= 50 & Time <= 83) %>%
+  group_by(Channel) %>% summarise(meannorm_sig1 = mean(iTEP_norm))
+meannorm_sig2 <- TEP_amy_avg %>% filter(DKT == "Right-Amygdala" & Condition == "tms" & Time >= 164 & Time <= 283) %>%
+  group_by(Channel) %>% summarise(meannorm_sig2 = mean(iTEP_norm))
+meannorm_sig3 <- TEP_amy_avg %>% filter(DKT == "Right-Amygdala" & Condition == "tms" & Time >= 382 & Time <= 434) %>%
+  group_by(Channel) %>% summarise(meannorm_sig3 = mean(iTEP_norm))
+
+FC_TEP_R_corr <- FC_TEP_R_corr %>% 
+  # left_join(filter(ptp1_amy, Condition == "tms")[c(3,4)]) %>% 
+  # left_join(ptp1_amy_wide[c(2,6)]) %>% 
+  # left_join(filter(ptp2_amy, Condition == "tms")[c(3,4)]) %>% 
+  # left_join(ptp2_amy_wide[c(2,6)]) %>% 
+  # left_join(meanSD1) %>% 
+  # left_join(meanSD2) %>% 
+  # left_join(meanSD3) %>% 
+  # left_join(meanSDall) %>% 
+  # left_join(meanSD1_tvs) %>% 
+  # left_join(meanSD2_tvs) %>% 
+  # left_join(meanSD3_tvs) %>% 
+  # left_join(meanSDall_tvs) %>% 
+  left_join(meannorm1) %>% 
+  left_join(meannorm2) %>% 
+  left_join(meannorm3) %>% 
+  left_join(meannorm_sig1) %>% 
+  left_join(meannorm_sig2) %>% 
+  left_join(meannorm_sig3)
+write.csv(FC_TEP_R_corr, "C:/Users/xjl19/Desktop/TMS-iEEG/fMRI_connectivity/FC_TEP_R_corr.csv")
+
+
+# corr analysis
+labels = c('rs-FC (z)','N/P70 range','N/P70 range TMS-Sham','N/P150 range','N/P150 range TMS-Sham',
+           'Mean abs SD (25~114ms)','Peak abs SD (25~114ms)',
+           'Mean abs SD (138~202ms)','Peak abs SD (138~202m)',
+           'Mean abs SD (326~406ms)','Peak abs SD (326~406ms)',
+           'Mean abs SD (25~450ms)','Peak abs SD (25~450ms)',
+           'Mean abs SD TMS-Sham (25~114ms)', 'Mean abs SD TMS-Sham (138~202ms)',
+           'Mean abs SD TMS-Sham (326~406ms)','Mean abs SD TMS-Sham (25~450ms)',
+           'Mean SD (25~100ms)','Mean SD (150~250ms)','Mean SD (300~400ms)','Mean SD (162~274ms)')
+column <- c(5,7:13)
+correlation <- corr.test(FC_TEP_R_corr[,column], method="pearson",adjust="fdr")
+r <- correlation$r
+p <- correlation$p
+# green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+# png(filename ='pearson_RAMY_r.png', width =5000,height=5000, units = "px", res=500)
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  # labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Right Amygdala Pearson's r")
+dev.off()
+
+correlation <- corr.test(FC_TEP_R_corr[,column], method="spearman",adjust="fdr")
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+png(filename ='pearson_RAMY_rho.png', width =5000,height=5000, units = "px", res=500)
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Right Amygdala Spearman's ??")
+dev.off()
+
+
+```
+
+```{r amy Right medial}
+FC_TEP_R_me_corr <- FC_TEP_corr[1:7] %>% filter(DKT == "Right-Amygdala" & is_lateral == 0)
+
+# meanSD1 <- TEP_amy_avg %>% filter(DKT == "Right-Amygdala" & Condition == "tms" & Time >=.026 & Time <=.114) %>%
+#   group_by(Channel) %>% summarise(meanSD1 = mean(SDchange),
+#                                   peakSD1 = max(SDchange))
+# meanSD2 <- TEP_amy_avg %>% filter(DKT == "Right-Amygdala" & Condition == "tms" & Time >=.138 & Time <=.202) %>%
+#   group_by(Channel) %>% summarise(meanSD2 = mean(SDchange),
+#                                   peakSD2 = max(SDchange))
+# meanSD3 <- TEP_amy_avg %>% filter(DKT == "Right-Amygdala" & Condition == "tms" & Time >=.326 & Time <=.406) %>%
+#   group_by(Channel) %>% summarise(meanSD3 = mean(SDchange),
+#                                   peakSD3 = max(SDchange))
+# meanSDall <- TEP_amy_avg %>% filter(DKT == "Right-Amygdala" & Condition == "tms" & Time >=.026 & Time <=.450) %>%
+#   group_by(Channel) %>% summarise(meanSDall = mean(SDchange),
+#                                   peakSDall = max(SDchange))
+# 
+# TEP_amy_tvs_corr <- TEP_amy_avg[c(1:4,9:12)] %>% 
+#   pivot_wider(names_from = Condition, values_from = SDchange)
+# meanSD1_tvs <- TEP_amy_tvs_corr %>% filter(DKT == "Right-Amygdala" & Time >=.026 & Time <=.114) %>%
+#   mutate(meanSD1_tvs = tms-sham) %>% group_by(Channel) %>% 
+#   summarise(meanSD1_tvs = mean(meanSD1_tvs))
+# meanSD2_tvs <- TEP_amy_tvs_corr %>% filter(DKT == "Right-Amygdala" & Time >=.138 & Time <=.202) %>%
+#   mutate(meanSD2_tvs = tms-sham) %>% group_by(Channel) %>% 
+#   summarise(meanSD2_tvs = mean(meanSD2_tvs))
+# meanSD3_tvs <- TEP_amy_tvs_corr %>% filter(DKT == "Right-Amygdala" & Time >=.326 & Time <=.406) %>%
+#   mutate(meanSD3_tvs = tms-sham) %>% group_by(Channel) %>% 
+#   summarise(meanSD3_tvs = mean(meanSD3_tvs))
+# meanSDall_tvs <- TEP_amy_tvs_corr %>% filter(DKT == "Right-Amygdala" & Time >=.026 & Time <=.450) %>%
+#   mutate(meanSDall_tvs = tms-sham) %>% group_by(Channel) %>% 
+#   summarise(meanSDall_tvs = mean(meanSDall_tvs))
+  
+meannorm1 <- TEP_amy_avg %>% filter(DKT == "Right-Amygdala" & is_lateral == 0 & Condition == "tms" & Time >= 26 & Time <= 100) %>%
+  group_by(Channel) %>% summarise(meannorm1 = mean(iTEP_norm))
+meannorm2 <- TEP_amy_avg %>% filter(is_lateral == 0 & DKT == "Right-Amygdala" & Condition == "tms" & Time >= 150 & Time <= 250) %>%
+  group_by(Channel) %>% summarise(meannorm2 = mean(iTEP_norm))
+meannorm3 <- TEP_amy_avg %>% filter(is_lateral == 0 & DKT == "Right-Amygdala" & Condition == "tms" & Time >= 300 & Time <= 450) %>%
+  group_by(Channel) %>% summarise(meannorm3 = mean(iTEP_norm))
+
+meannorm_sig1 <- TEP_amy_avg %>% filter(is_lateral == 0 & DKT == "Right-Amygdala" & Condition == "tms" & Time >= 50 & Time <= 87) %>%
+  group_by(Channel) %>% summarise(meannorm_sig1 = mean(iTEP_norm))
+meannorm_sig2 <- TEP_amy_avg %>% filter(is_lateral == 0 & DKT == "Right-Amygdala" & Condition == "tms" & Time >= 166 & Time <= 240) %>%
+  group_by(Channel) %>% summarise(meannorm_sig2 = mean(iTEP_norm))
+meannorm_sig3 <- TEP_amy_avg %>% filter(is_lateral == 0 & DKT == "Right-Amygdala" & Condition == "tms" & Time >= 333 & Time <= 354) %>%
+  group_by(Channel) %>% summarise(meannorm_sig3 = mean(iTEP_norm))
+
+FC_TEP_R_me_corr <- FC_TEP_R_me_corr %>% 
+  # left_join(filter(ptp1_amy, Condition == "tms")[c(3,4)]) %>% 
+  # left_join(ptp1_amy_wide[c(2,6)]) %>% 
+  # left_join(filter(ptp2_amy, Condition == "tms")[c(3,4)]) %>% 
+  # left_join(ptp2_amy_wide[c(2,6)]) %>% 
+  # left_join(meanSD1) %>% 
+  # left_join(meanSD2) %>% 
+  # left_join(meanSD3) %>% 
+  # left_join(meanSDall) %>% 
+  # left_join(meanSD1_tvs) %>% 
+  # left_join(meanSD2_tvs) %>% 
+  # left_join(meanSD3_tvs) %>% 
+  # left_join(meanSDall_tvs) %>% 
+  left_join(meannorm1) %>% 
+  left_join(meannorm2) %>% 
+  left_join(meannorm3) %>% 
+  left_join(meannorm_sig1) %>% 
+  left_join(meannorm_sig2) %>% 
+  left_join(meannorm_sig3)
+write.csv(FC_TEP_R_corr, "C:/Users/xjl19/Desktop/TMS-iEEG/fMRI_connectivity/FC_TEP_R_corr.csv")
+
+
+# corr analysis
+labels = c('rs-FC (z)','abs rs-FC (z)',
+           'N/P70 range','N/P70 range TMS-Sham',
+           'N/P150 range','N/P150 range TMS-Sham',
+           'Mean abs SD (25~114ms)','Peak abs SD (25~114ms)',
+           'Mean abs SD (138~202ms)','Peak abs SD (138~202m)',
+           'Mean abs SD (326~406ms)','Peak abs SD (326~406ms)',
+           'Mean abs SD (25~450ms)','Peak abs SD (25~450ms)',
+           'Mean abs SD TMS-Sham (25~114ms)', 'Mean abs SD TMS-Sham (138~202ms)',
+           'Mean abs SD TMS-Sham (326~406ms)','Mean abs SD TMS-Sham (25~450ms)',
+           'Mean SD (25~100ms)','Mean SD (150~250ms)','Mean SD (300~400ms)','Mean SD (162~274ms)')
+column <- c(5,7:13)
+correlation <- corr.test(FC_TEP_R_me_corr[,column], method="pearson",adjust="fdr")
+r <- correlation$r
+p <- correlation$p
+# green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+# png(filename ='pearson_RAMY_r.png', width =5000,height=5000, units = "px", res=500)
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  # labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Right Medial Amygdala Pearson's r")
+dev.off()
+
+correlation <- corr.test(FC_TEP_R_me_corr[,column], method="spearman",adjust="fdr")
+r <- correlation$r
+p <- correlation$p
+green <- colorRampPalette(c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"))
+png(filename ='pearson_RAMY_rho.png', width =5000,height=5000, units = "px", res=500)
+ggcor3 <- corPlot(r,numbers=TRUE,colors=TRUE,show.legend=TRUE,pval=p, MAR=8.5,
+                  labels=labels,
+                  diag=FALSE,stars=TRUE,adjust="none",gr=green,xlas=2,main="Right Amygdala Spearman's ??")
+dev.off()
+
+
+```
+
+
+```{r linear regression whole amy}
+# whole amy
+m.range1 <- lm(range1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr)
+m.range1 <- lm(range1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr[-c(13),])
+summary(m.range1)
+plot(m.range1, which = 4)
+
+m.range1_tvs <- lm(range1_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr)
+m.range1_tvs <- lm(range1_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr[-c(13),])
+summary(m.range1_tvs)
+plot(m.range1_tvs, which = 4)
+
+m.range2 <- lm(range2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr)
+m.range2 <- lm(range2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr[-c(12,25),])
+summary(m.range2)
+plot(m.range2, which = 4)
+cooks.distance(m.range2)
+
+m.range2_tvs <- lm(range2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr)
+m.range2_tvs <- lm(range2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr[-c(12),])
+summary(m.range2_tvs)
+plot(m.range2_tvs, which = 4)
+cooks.distance(m.range2_tvs)
+
+m.meanSD1 <- lm(meanSD1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr)
+m.meanSD1 <- lm(meanSD1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr[-c(13,15),])
+summary(m.meanSD1)
+plot(m.meanSD1, which = 4)
+m.meanSD2 <- lm(meanSD2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr)
+m.meanSD2 <- lm(meanSD2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr[-c(12,15,17),])
+summary(m.meanSD2)
+plot(m.meanSD2, which = 4)
+m.meanSD3 <- lm(meanSD3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr)
+m.meanSD3 <- lm(meanSD3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr[-c(11,17),])
+summary(m.meanSD3)
+plot(m.meanSD3, which = 4)
+
+m.peakSD1 <- lm(peakSD1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr)
+m.peakSD1 <- lm(peakSD1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr[-c(13,15),])
+summary(m.peakSD1)
+plot(m.peakSD1, which = 4)
+m.peakSD2 <- lm(peakSD2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr)
+m.peakSD2 <- lm(peakSD2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr[-c(15),])
+summary(m.peakSD2)
+plot(m.peakSD2, which = 4)
+m.peakSD3 <- lm(peakSD3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr)
+m.peakSD3 <- lm(peakSD3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr[-c(8,18,25),])
+summary(m.peakSD3)
+plot(m.peakSD3, which = 4)
+
+m.meanSD1_tvs <- lm(meanSD1_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr)
+m.meanSD1_tvs <- lm(meanSD1_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr[-c(13,15),])
+summary(m.meanSD1_tvs)
+plot(m.meanSD1_tvs, which = 4)
+m.meanSD2_tvs <- lm(meanSD2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr)
+m.meanSD2_tvs <- lm(meanSD2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr[-c(12,18,17,23),])
+summary(m.meanSD2_tvs)
+plot(m.meanSD2_tvs, which = 4)
+m.meanSD3_tvs <- lm(meanSD3_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr)
+m.meanSD3_tvs <- lm(meanSD3_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr[-c(11,17,18),])
+summary(m.meanSD3_tvs)
+plot(m.meanSD3_tvs, which = 4)
+m.meanSDall <- lm(meanSDall ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr)
+m.meanSDall <- lm(meanSDall ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr[-c(15,25),])
+summary(m.meanSDall)
+plot(m.meanSDall, which = 4)
+
+m.meannorm1 <- lm(meannorm1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr)
+m.meannorm1 <- lm(meannorm1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr[-c(13,15),])
+summary(m.meannorm1)
+plot(m.meannorm1, which = 4)
+m.meannorm2 <- lm(meannorm2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr)
+m.meannorm2 <- lm(meannorm2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr[-c(12,15,18),])
+summary(m.meannorm2)
+plot(m.meannorm2, which = 4)
+m.meannorm3 <- lm(meannorm3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr)
+m.meannorm3 <- lm(meannorm3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr[-c(11,17),])
+summary(m.meannorm3)
+plot(m.meannorm3, which = 4)
+
+m.meannorm_sig <- lm(meannorm_sig ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr)
+m.meannorm_sig <- lm(meannorm_sig ~ z_lDLPFC_0_5Hz, data = FC_TEP_AMY_corr[-c(15,17,18),])
+summary(m.meannorm_sig)
+plot(m.meannorm_sig, which = 4)
+
+# shapiro.test(residuals(m.range2_tvs))
+# ncvTest(m.range2_tvs)
+# # p.range2_tvs <- 
+# ggplot(FC_TEP_AMY_corr, aes(y = range2_tvs, x = z_lDLPFC_0_5Hz))+
+#   geom_point(size = 2, alpha =.3) + 
+#   geom_smooth(method = 'lm', size = 1.5, col = "#F8766D", fill = "#F8766D", alpha=.12)+
+#   xlab("FC (Fisher Z)") + ylab("TMS vs Sham N/P150 range difference (SD)")+ 
+#   ylim(-6,12)+
+#   theme_classic()+
+#   theme(axis.line=element_line(linetype=1,color="black",size=1))+
+#   theme(axis.ticks=element_line(color="black",size=1,lineend = 12))+
+#   theme(axis.text = element_text(color = "black", size = rel(1.2)))+
+#   theme(axis.title = element_text(color = "black", size = 16))
+# p.range2_tvs
+```
+
+```{r linear regression L amy}
+# whole amy
+m.range1 <- lm(range1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr)
+m.range1 <- lm(range1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr[-c(5,10),])
+summary(m.range1)
+plot(m.range1, which = 4)
+
+m.range1_tvs <- lm(range1_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr)
+m.range1_tvs <- lm(range1_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr[-c(5),]) #sig
+summary(m.range1_tvs)
+plot(m.range1_tvs, which = 4)
+cor.test(FC_TEP_L_corr[-c(5),]$z_lDLPFC_0_5Hz, FC_TEP_L_corr[-c(5),]$range1_tvs, method="spearman")
+# p.range1_tvs_L_ori <- ggplot(FC_TEP_L_corr, aes(y = range1_tvs, x = z_lDLPFC_0_5Hz))+
+p.range1_tvs_L <- ggplot(FC_TEP_L_corr[-c(5),], aes(y = range1_tvs, x = z_lDLPFC_0_5Hz))+
+  annotate("text", x=-0.2, y = 3, label="r = 0.72,  p = 0.030*", size=5)+
+  geom_point(size = 2, alpha =.3) + 
+  geom_smooth(method = 'lm', size = 1.5, col = "#F8766D", fill = "#F8766D", alpha=.12)+
+  xlab("FC (Fisher Z)") + ylab("TMS vs Sham N/P70 range difference (SD)")+ 
+  ylim(-3,4.5)+
+  ggtitle("AMY Left")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=1))+
+  theme(axis.ticks=element_line(color="black",size=1,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.2)))+
+  theme(axis.title = element_text(color = "black", size = 16))
+p.range1_tvs_L_ori
+p.range1_tvs_L
+
+m.range2 <- lm(range2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr)
+m.range2 <- lm(range2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr[-c(5),])
+summary(m.range2)
+plot(m.range2, which = 4)
+cooks.distance(m.range2)
+
+m.range2_tvs <- lm(range2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr)
+m.range2_tvs <- lm(range2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr[-c(5),]) #sig
+summary(m.range2_tvs)
+plot(m.range2_tvs, which = 4)
+cooks.distance(m.range2_tvs)
+cor.test(FC_TEP_L_corr[-c(5),]$z_lDLPFC_0_5Hz, FC_TEP_L_corr[-c(5),]$range2_tvs, method="spearman")
+# p.range2_tvs_L_ori <- ggplot(FC_TEP_L_corr, aes(y = range2_tvs, x = z_lDLPFC_0_5Hz))+
+p.range2_tvs_L <- ggplot(FC_TEP_L_corr[-c(5),], aes(y = range2_tvs, x = z_lDLPFC_0_5Hz))+
+  annotate("text", x=-0.2, y = 8, label="r = 0.82,  p = 0.006**", size=5)+
+  geom_point(size = 2, alpha =.3) + 
+  geom_smooth(method = 'lm', size = 1.5, col = "#F8766D", fill = "#F8766D", alpha=.12)+
+  xlab("FC (Fisher Z)") + ylab("TMS vs Sham N/P150 range difference (SD)")+ 
+  ylim(-8,12)+
+  ggtitle("AMY Left")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=1))+
+  theme(axis.ticks=element_line(color="black",size=1,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.2)))+
+  theme(axis.title = element_text(color = "black", size = 16))
+p.range2_tvs_L_ori
+p.range2_tvs_L
+
+m.meanSD2 <- lm(meanSD2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr)
+m.meanSD2 <- lm(meanSD2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr[-c(5),])
+summary(m.meanSD2)
+plot(m.meanSD2, which = 4)
+m.meanSD3 <- lm(meanSD3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr)
+summary(m.meanSD3)
+plot(m.meanSD3, which = 4)
+m.meanSDall <- lm(meanSDall ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr)
+m.meanSDall <- lm(meanSDall ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr[-c(5),])
+summary(m.meanSDall)
+plot(m.meanSDall, which = 4)
+cooks.distance(m.meanSDall)
+
+m.peakSD3 <- lm(peakSD3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr)
+summary(m.peakSD3)
+plot(m.peakSD3, which = 4)
+m.peakSD2 <- lm(peakSD2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr)
+m.peakSD2 <- lm(peakSD2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr[-c(5),])
+summary(m.peakSD2)
+plot(m.peakSD2, which = 4)
+m.peakSDall <- lm(peakSDall ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr)
+summary(m.peakSDall)
+plot(m.peakSDall, which = 4)
+
+m.meanSD3_tvs <- lm(meanSD3_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr)
+m.meanSD3_tvs <- lm(meanSD3_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr[-c(4),])
+summary(m.meanSD3_tvs)
+plot(m.meanSD3_tvs, which = 4)
+m.meanSD2_tvs <- lm(meanSD2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr)
+m.meanSD2_tvs <- lm(meanSD2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr[-c(5),])
+summary(m.meanSD2_tvs)
+plot(m.meanSD2_tvs, which = 4)
+m.meanSDall_tvs <- lm(meanSDall_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr)
+m.meanSDall_tvs <- lm(meanSDall_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr[-c(5,10),])
+summary(m.meanSDall_tvs)
+plot(m.meanSDall_tvs, which = 4)
+
+m.meannorm1 <- lm(meannorm1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr)
+m.meannorm1 <- lm(meannorm1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr[-c(5,10),])
+summary(m.meannorm1)
+plot(m.meannorm1, which = 4)
+cooks.distance(m.meannorm1)
+m.meannorm2 <- lm(meannorm2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr)
+m.meannorm2 <- lm(meannorm2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr[-c(5),])
+summary(m.meannorm2)
+plot(m.meannorm2, which = 4)
+m.meannorm3 <- lm(meannorm3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr)
+m.meannorm3 <- lm(meannorm3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr[-c(4),])
+summary(m.meannorm3)
+plot(m.meannorm3, which = 4)
+
+m.meannorm_sig <- lm(meannorm_sig ~ z_lDLPFC_0_5Hz, data = FC_TEP_L_corr)
+summary(m.meannorm_sig)
+plot(m.meannorm_sig, which = 4)
+
+setwd("C:\\Users\\xjl19\\Desktop\\TMS-iEEG\\all_Figures")
+pdf(file = "iTEP_FC_corr_L.pdf", height = 6, width = 4.5)
+plot(m.range1_tvs, which = 4)
+p.range1_tvs_L_ori
+p.range1_tvs_L
+plot(m.range2_tvs, which = 4)
+p.range2_tvs_L_ori
+p.range2_tvs_L
+dev.off()
+```
+
+```{r linear regression R amy}
+# whole amy
+m.range1 <- lm(range1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr)
+m.range1 <- lm(range1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr[-c(8,13),])
+summary(m.range1)
+plot(m.range1, which = 4)
+
+m.range1_tvs <- lm(range1_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr)
+m.range1_tvs <- lm(range1_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr[-c(8,13),])
+summary(m.range1_tvs)
+plot(m.range1_tvs, which = 4)
+
+m.range2 <- lm(range2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr)
+m.range2 <- lm(range2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr[-c(13),])
+summary(m.range2)
+plot(m.range2, which = 4)
+cooks.distance(m.range2)
+
+m.range2_tvs <- lm(range2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr)
+m.range2_tvs <- lm(range2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr[-c(10,13),])
+summary(m.range2_tvs)
+plot(m.range2_tvs, which = 4)
+cooks.distance(m.range2_tvs)
+
+m.meanSD1 <- lm(meanSD1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr)
+m.meanSD1 <- lm(meanSD1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr[-c(13),])
+summary(m.meanSD1)
+cooks.distance(m.meanSD1)
+plot(m.meanSD1, which = 4)
+m.meanSD2 <- lm(meanSD2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr)
+m.meanSD2 <- lm(meanSD2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr[-c(13),])
+summary(m.meanSD2)
+plot(m.meanSD2, which = 4)
+m.meanSD3 <- lm(meanSD3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr)
+m.meanSD3 <- lm(meanSD3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr[-c(12),])
+summary(m.meanSD3)
+plot(m.meanSD3, which = 4)
+
+m.peakSD1 <- lm(peakSD1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr)
+m.peakSD1 <- lm(peakSD1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr[-c(13,10),])
+summary(m.peakSD1)
+plot(m.peakSD1, which = 4)
+m.peakSD2 <- lm(peakSD2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr)
+m.peakSD2 <- lm(peakSD2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr[-c(13),])
+summary(m.peakSD2)
+plot(m.peakSD2, which = 4)
+m.peakSD3 <- lm(peakSD3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr)
+m.peakSD3 <- lm(peakSD3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr[-c(12),])
+summary(m.peakSD3)
+plot(m.peakSD3, which = 4)
+cooks.distance(m.peakSD3)
+
+m.meanSD1_tvs <- lm(meanSD1_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr)
+m.meanSD1_tvs <- lm(meanSD1_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr[-c(13),])
+summary(m.meanSD1_tvs)
+plot(m.meanSD1_tvs, which = 4)
+m.meanSD2_tvs <- lm(meanSD2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr)
+m.meanSD2_tvs <- lm(meanSD2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr[-c(13),])
+summary(m.meanSD2_tvs)
+plot(m.meanSD2_tvs, which = 4)
+cooks.distance(m.meanSD2_tvs)
+m.meanSD3_tvs <- lm(meanSD3_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr)
+m.meanSD3_tvs <- lm(meanSD3_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr[-c(12,13),]) #sig
+summary(m.meanSD3_tvs)
+plot(m.meanSD3_tvs, which = 4)
+cor.test(FC_TEP_R_corr[-c(12,13),]$z_lDLPFC_0_5Hz, FC_TEP_R_corr[-c(12,13),]$meanSD3_tvs, method="spearman")
+# p.meanSD3_tvs_R_ori <- ggplot(FC_TEP_R_corr, aes(y = meanSD3_tvs, x = z_lDLPFC_0_5Hz))+
+p.meanSD3_tvs_R <- ggplot(FC_TEP_R_corr[-c(12,13),], aes(y = meanSD3_tvs, x = z_lDLPFC_0_5Hz))+
+  annotate("text", x=-0.17, y = 4, label="r = -0.55,  p = 0.039*", size=5)+
+  geom_point(size = 2, alpha =.3) + 
+  geom_smooth(method = 'lm', size = 1.5, col = "#F8766D", fill = "#F8766D", alpha=.12)+
+  xlab("FC (Fisher Z)") + ylab("Mean absolute amplitude across 326~406ms (SD)")+ 
+  ylim(-3.5,5)+
+  ggtitle("AMY Right")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=1))+
+  theme(axis.ticks=element_line(color="black",size=1,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.2)))+
+  theme(axis.title = element_text(color = "black", size = 16))
+p.meanSD3_tvs_R_ori
+p.meanSD3_tvs_R
+
+
+m.meanSDall <- lm(meanSDall ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr)
+m.meanSDall <- lm(meanSDall ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr[-c(10,12,13),])
+summary(m.meanSDall)
+plot(m.meanSDall, which = 4)
+
+m.meannorm1 <- lm(meannorm1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr)
+m.meannorm1 <- lm(meannorm1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr[-c(13,10),])
+summary(m.meannorm1)
+plot(m.meannorm1, which = 4)
+cooks.distance(m.meannorm1)
+m.meannorm2 <- lm(meannorm2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr)
+m.meannorm2 <- lm(meannorm2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr[-c(10,13),])
+summary(m.meannorm2)
+plot(m.meannorm2, which = 4)
+m.meannorm3 <- lm(meannorm3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr)
+m.meannorm3 <- lm(meannorm3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr[-c(12,13),])
+summary(m.meannorm3)
+plot(m.meannorm3, which = 4)
+
+m.meannorm_sig <- lm(meannorm_sig ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr)
+m.meannorm_sig <- lm(meannorm_sig ~ z_lDLPFC_0_5Hz, data = FC_TEP_R_corr[-c(10,13),]) #sig
+summary(m.meannorm_sig)
+plot(m.meannorm_sig, which = 4)
+cor.test(FC_TEP_R_corr[-c(10,13),]$z_lDLPFC_0_5Hz, FC_TEP_R_corr[-c(10,13),]$meannorm_sig, method="spearman")
+# p.m.meannorm_sig_R_ori <- ggplot(FC_TEP_R_corr, aes(y = meannorm_sig, x = z_lDLPFC_0_5Hz))+
+p.m.meannorm_sig_R <- ggplot(FC_TEP_R_corr[-c(10,13),], aes(y = meannorm_sig, x = z_lDLPFC_0_5Hz))+
+  annotate("text", x=-0.15, y = 5.5, label="r = 0.53,  p = 0.049*", size=5)+
+  geom_point(size = 2, alpha =.3) + 
+  geom_smooth(method = 'lm', size = 1.5, col = "#F8766D", fill = "#F8766D", alpha=.12)+
+  xlab("FC (Fisher Z)") + ylab("Mean amplitude across 162~274ms (SD)")+ 
+  ylim(-1,6)+
+  ggtitle("AMY Right")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=1))+
+  theme(axis.ticks=element_line(color="black",size=1,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.2)))+
+  theme(axis.title = element_text(color = "black", size = 16))
+p.m.meannorm_sig_R_ori
+p.m.meannorm_sig_R
+
+setwd("C:\\Users\\xjl19\\Desktop\\TMS-iEEG\\all_Figures")
+pdf(file = "iTEP_FC_corr_R.pdf", height = 6, width = 4.5)
+plot(m.meanSD3_tvs, which = 4)
+p.meanSD3_tvs_R_ori
+p.meanSD3_tvs_R
+plot(m.meannorm_sig, which = 4)
+p.m.meannorm_sig_R_ori
+p.m.meannorm_sig_R
+dev.off()
+```
+
+
+
+```{r linear regression medial amy}
+# medial amy
+m.range1 <- lm(range1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr)
+m.range1 <- lm(range1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr[-c(7),])
+summary(m.range1)
+plot(m.range1, which = 4)
+
+m.range1_tvs <- lm(range1_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr)
+m.range1_tvs <- lm(range1_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr[-c(7),])
+summary(m.range1_tvs)
+plot(m.range1_tvs, which = 4)
+
+m.range2 <- lm(range2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr)
+m.range2 <- lm(range2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr[-c(14),])
+summary(m.range2)
+plot(m.range2, which = 4)
+cooks.distance(m.range2)
+
+m.range2_tvs <- lm(range2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr)
+m.range2_tvs <- lm(range2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr[-c(14),])
+summary(m.range2_tvs)
+plot(m.range2_tvs, which = 4)
+cooks.distance(m.range2_tvs)
+
+m.meanSD1 <- lm(meanSD1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr)
+m.meanSD1 <- lm(meanSD1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr[-c(7),])
+summary(m.meanSD1)
+cooks.distance(m.meanSD1)
+plot(m.meanSD1, which = 4)
+m.meanSD2 <- lm(meanSD2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr)
+m.meanSD2 <- lm(meanSD2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr[-c(14),])
+summary(m.meanSD2)
+cooks.distance(m.meanSD2)
+plot(m.meanSD2, which = 4)
+m.meanSD3 <- lm(meanSD3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr)
+summary(m.meanSD3)
+plot(m.meanSD3, which = 4)
+
+m.peakSD1 <- lm(peakSD1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr)
+summary(m.peakSD1)
+plot(m.peakSD1, which = 4)
+m.peakSD2 <- lm(peakSD2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr)
+summary(m.peakSD2)
+plot(m.peakSD2, which = 4)
+m.peakSD3 <- lm(peakSD3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr)
+m.peakSD3 <- lm(peakSD3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr[-c(10,14),])
+summary(m.peakSD3)
+plot(m.peakSD3, which = 4)
+cooks.distance(m.peakSD3)
+
+m.meanSD1_tvs <- lm(meanSD1_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr)
+m.meanSD1_tvs <- lm(meanSD1_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr[-c(7),])
+summary(m.meanSD1_tvs)
+plot(m.meanSD1_tvs, which = 4)
+m.meanSD2_tvs <- lm(meanSD2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr)
+m.meanSD2_tvs <- lm(meanSD2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr[-c(10),])
+summary(m.meanSD2_tvs)
+plot(m.meanSD2_tvs, which = 4)
+m.meanSD3_tvs <- lm(meanSD3_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr)
+m.meanSD3_tvs <- lm(meanSD3_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr[-c(10,6),]) 
+summary(m.meanSD3_tvs)
+cooks.distance(m.meanSD3_tvs)
+plot(m.meanSD3_tvs, which = 4)
+
+m.meanSDall <- lm(meanSDall ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr)
+summary(m.meanSDall)
+plot(m.meanSDall, which = 4)
+cooks.distance(m.meanSDall)
+
+m.meannorm1 <- lm(meannorm1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr)
+m.meannorm1 <- lm(meannorm1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr[-c(7),])
+summary(m.meannorm1)
+plot(m.meannorm1, which = 4)
+cooks.distance(m.meannorm1)
+m.meannorm2 <- lm(meannorm2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr)
+m.meannorm2 <- lm(meannorm2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr[-c(9,10),])
+summary(m.meannorm2)
+plot(m.meannorm2, which = 4)
+m.meannorm3 <- lm(meannorm3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr)
+m.meannorm3 <- lm(meannorm3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr[-c(14),])
+summary(m.meannorm3)
+plot(m.meannorm3, which = 4)
+cooks.distance(m.meannorm3)
+
+m.meannorm_sig <- lm(meannorm_sig ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr)
+m.meannorm_sig <- lm(meannorm_sig ~ z_lDLPFC_0_5Hz, data = FC_TEP_me_corr[-c(10,14),])
+summary(m.meannorm_sig)
+plot(m.meannorm_sig, which = 4)
+```
+
+```{r linear regression Lateral amy}
+# lateral amy
+m.range1 <- lm(range1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr)
+m.range1 <- lm(range1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr[-c(6),])
+summary(m.range1)
+plot(m.range1, which = 4)
+
+m.range1_tvs <- lm(range1_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr)
+m.range1_tvs <- lm(range1_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr[-c(6,5),]) 
+summary(m.range1_tvs)
+plot(m.range1_tvs, which = 4)
+
+m.range2 <- lm(range2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr)
+m.range2 <- lm(range2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr[-c(6,5),])
+summary(m.range2)
+plot(m.range2, which = 4)
+cooks.distance(m.range2)
+
+m.range2_tvs <- lm(range2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr)
+m.range2_tvs <- lm(range2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr[-c(5,6),])
+summary(m.range2_tvs)
+plot(m.range2_tvs, which = 4)
+cooks.distance(m.range2_tvs)
+
+m.meanSD2 <- lm(meanSD2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr)
+m.meanSD2 <- lm(meanSD2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr[-c(5,6),])
+summary(m.meanSD2)
+plot(m.meanSD2, which = 4)
+m.meanSD3 <- lm(meanSD3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr)
+m.meanSD3 <- lm(meanSD3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr[-c(8),]) #sig
+summary(m.meanSD3)
+plot(m.meanSD3, which = 4)
+m.meanSDall <- lm(meanSDall ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr)
+m.meanSDall <- lm(meanSDall ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr[-c(6,8),])
+summary(m.meanSDall)
+plot(m.meanSDall, which = 4)
+cooks.distance(m.meanSDall)
+
+m.peakSD1 <- lm(peakSD1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr)
+summary(m.peakSD1)
+plot(m.peakSD1, which = 4)
+m.peakSD2 <- lm(peakSD2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr)
+m.peakSD2 <- lm(peakSD2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr[-c(5,6),])
+summary(m.peakSD2)
+plot(m.peakSD2, which = 4)
+m.peakSDall <- lm(peakSDall ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr)
+m.peakSDall <- lm(peakSDall ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr)[-c(6),]
+summary(m.peakSDall)
+plot(m.peakSDall, which = 4)
+
+m.meanSD3_tvs <- lm(meanSD3_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr)
+summary(m.meanSD3_tvs)
+plot(m.meanSD3_tvs, which = 4)
+m.meanSD2_tvs <- lm(meanSD2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr)
+m.meanSD2_tvs <- lm(meanSD2_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr[-c(5,6),])
+summary(m.meanSD2_tvs)
+plot(m.meanSD2_tvs, which = 4)
+m.meanSDall_tvs <- lm(meanSDall_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr)
+m.meanSDall_tvs <- lm(meanSDall_tvs ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr[-c(6),])
+summary(m.meanSDall_tvs)
+plot(m.meanSDall_tvs, which = 4)
+
+m.meannorm1 <- lm(meannorm1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr)
+m.meannorm1 <- lm(meannorm1 ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr[-c(6),])
+summary(m.meannorm1)
+plot(m.meannorm1, which = 4)
+cooks.distance(m.meannorm1)
+m.meannorm2 <- lm(meannorm2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr)
+m.meannorm2 <- lm(meannorm2 ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr[-c(5,6),])
+summary(m.meannorm2)
+plot(m.meannorm2, which = 4)
+m.meannorm3 <- lm(meannorm3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr)
+m.meannorm3 <- lm(meannorm3 ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr[-c(5),])
+summary(m.meannorm3)
+plot(m.meannorm3, which = 4)
+cooks.distance(m.meannorm3)
+m.meannorm_sig <- lm(meannorm_sig ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr)
+m.meannorm_sig <- lm(meannorm_sig ~ z_lDLPFC_0_5Hz, data = FC_TEP_la_corr[-c(8),])
+summary(m.meannorm_sig)
+plot(m.meannorm_sig, which = 4)
+```
+
+```{r}
+BaselineSD <- TEP_amy_avg %>% group_by(Channel, Condition) %>%
+summarise(baseline_SD = mean(base_sd))
+BaselineSD <- BaselineSD %>% pivot_wider(names_from = Condition, values_from = baseline_SD)
+
+BaselineSD$BaselineSD_TMS <- BaselineSD$tms
+BaselineSD$BaselineSD_Sham <- BaselineSD$sham
+BaselineSD$BaselineSD_Fake <- BaselineSD$fake
+BaselineSD <- BaselineSD[-c(2:4)]
+
+ggplot(BaselineSD, aes(x = Condition, y = baseline_SD))+
+  geom_point(position = position_jitter(width = 0.15), alpha=.5, size=2)+
+  ylim(0,40)
+```
+
+
+
+
+
+
+
+
+
+
+

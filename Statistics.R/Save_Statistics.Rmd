@@ -1,0 +1,243 @@
+---
+title: "Save Statistics Excel"
+author: "Xianqing"
+date: "8/3/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(openxlsx)
+setwd("C:/Users/xjl19/OneDrive - University of Iowa/1_TMS_iEEG/4_Statistics")
+```
+
+# iES-iEEG
+
+## iES DLPFC stim
+
+```{r iES L DLPFC}
+load("C:/Users/xjl19/OneDrive - University of Iowa/1_TMS_iEEG/3_ProcessedData_Backup/CCEP_csv_L-DLPFC_amy/CCEPamy_L-DLPFC_removed_cleaned_35Hz.RData")
+wb <- createWorkbook()
+
+# add sheets for each sub-amy
+addWorksheet(wb, "Whole_amy (n=11)")
+addWorksheet(wb, "Medial_amy (n=5)")
+addWorksheet(wb, "Lateral_amy (n=6)")
+
+addWorksheet(wb, "L_amy (n=7)")
+addWorksheet(wb, "L_Medial_amy (n=1)")
+addWorksheet(wb, "L_Lateral_amy (n=6)")
+
+addWorksheet(wb, "R_Medial_amy (n=4)")
+
+# write stats data in each sheet
+writeData(wb, "Whole_amy (n=11)", stats_amy_sig[c(3,1,2,4:6)])
+writeData(wb, "Medial_amy (n=5)", stats_amy_me_sig[c(3,1,2,4:6)])
+writeData(wb, "Lateral_amy (n=6)", stats_amy_la_sig[c(3,1,2,4:6)])
+
+writeData(wb, "L_amy (n=7)", stats_amy_L_sig[c(3,1,2,4:6)])
+# writeData(wb, "L_Medial_amy (n=1)", stats_amy_me_L_sig[c(3,1,2,4:6)])
+writeData(wb, "L_Lateral_amy (n=6)", stats_amy_la_L_sig[c(3,1,2,4:6)])
+
+writeData(wb, "R_Medial_amy (n=4)", stats_amy_me_R_sig[c(3,1,2,4:6)])
+
+# save Excel
+saveWorkbook(wb, "iES_L_DLPFC_Stats.xlsx", overwrite = TRUE)
+```
+
+```{r iES R DLPFC}
+load("C:/Users/xjl19/OneDrive - University of Iowa/1_TMS_iEEG/3_ProcessedData_Backup/CCEP_csv_R-DLPFC_amy/CCEPamy_R-DLPFC_removed_cleaned_35Hz.RData")
+wb <- createWorkbook()
+
+# add sheets for each sub-amy
+addWorksheet(wb, "Whole_amy (n=29)")
+addWorksheet(wb, "Medial_amy (n=16)")
+addWorksheet(wb, "Lateral_amy (n=13)")
+
+addWorksheet(wb, "L_amy (n=9)")
+addWorksheet(wb, "L_Medial_amy (n=6)")
+addWorksheet(wb, "L_Lateral_amy (n=3)")
+
+addWorksheet(wb, "R_amy (n=20)")
+addWorksheet(wb, "R_Medial_amy (n=10)")
+addWorksheet(wb, "R_Lateral_amy (n=10)")
+
+# write stats data in each sheet
+writeData(wb, "Whole_amy (n=29)", stats_amy_sig[c(3,1,2,4:6)])
+writeData(wb, "Medial_amy (n=16)", stats_amy_me_sig[c(3,1,2,4:6)])
+writeData(wb, "Lateral_amy (n=13)", stats_amy_la_sig[c(3,1,2,4:6)])
+
+writeData(wb, "L_amy (n=9)", stats_amy_L_sig[c(3,1,2,4:6)])
+writeData(wb, "L_Medial_amy (n=6)", stats_amy_me_L_sig[c(3,1,2,4:6)])
+writeData(wb, "L_Lateral_amy (n=3)", stats_amy_la_L_sig[c(3,1,2,4:6)])
+
+writeData(wb, "R_amy (n=20)", stats_amy_R_sig[c(3,1,2,4:6)])
+writeData(wb, "R_Medial_amy (n=10)", stats_amy_me_R_sig[c(3,1,2,4:6)])
+writeData(wb, "R_Lateral_amy (n=10)", stats_amy_la_R_sig[c(3,1,2,4:6)])
+
+# save Excel
+saveWorkbook(wb, "iES_R_DLPFC_Stats.xlsx", overwrite = TRUE)
+```
+
+
+
+## iES VLPFC stim
+
+```{r iES L VLPFC}
+load("C:/Users/xjl19/OneDrive - University of Iowa/1_TMS_iEEG/3_ProcessedData_Backup/CCEP_csv_L-IFG_amy/CCEPamy_L-IFG_removed_cleaned_35Hz.RData")
+wb <- createWorkbook()
+
+# add sheets for each sub-amy
+addWorksheet(wb, "Whole_amy (n=17)")
+addWorksheet(wb, "Medial_amy (n=6)")
+addWorksheet(wb, "Lateral_amy (n=11)")
+
+addWorksheet(wb, "L_amy (n=14)")
+addWorksheet(wb, "L_Medial_amy (n=5)")
+addWorksheet(wb, "L_Lateral_amy (n=9)")
+
+addWorksheet(wb, "R_amy (n=3)")
+addWorksheet(wb, "R_Medial_amy (n=1)")
+addWorksheet(wb, "R_Lateral_amy (n=2)")
+
+# write stats data in each sheet
+writeData(wb, "Whole_amy (n=17)", stats_amy_sig[c(3,1,2,4:6)])
+writeData(wb, "Medial_amy (n=6)", stats_amy_me_sig[c(3,1,2,4:6)])
+writeData(wb, "Lateral_amy (n=11)", stats_amy_la_sig[c(3,1,2,4:6)])
+
+writeData(wb, "L_amy (n=14)", stats_amy_L_sig[c(3,1,2,4:6)])
+writeData(wb, "L_Medial_amy (n=5)", stats_amy_me_L_sig[c(3,1,2,4:6)])
+writeData(wb, "L_Lateral_amy (n=9)", stats_amy_la_L_sig[c(3,1,2,4:6)])
+
+writeData(wb, "R_amy (n=3)", stats_amy_R_sig[c(3,1,2,4:6)])
+# writeData(wb, "R_Medial_amy (n=1)", stats_amy_me_R_sig[c(3,1,2,4:6)])
+# writeData(wb, "R_Lateral_amy (n=2)", stats_amy_la_R_sig[c(3,1,2,4:6)])
+
+# save Excel
+saveWorkbook(wb, "iES_L_VLPFC_Stats.xlsx", overwrite = TRUE)
+```
+
+```{r iES R VLPFC}
+load("C:/Users/xjl19/OneDrive - University of Iowa/1_TMS_iEEG/3_ProcessedData_Backup/CCEP_csv_R-IFG_amy/CCEPamy_R-IFG_removed_cleaned_35Hz.RData")
+wb <- createWorkbook()
+
+# add sheets for each sub-amy
+addWorksheet(wb, "Whole_amy (n=26)")
+addWorksheet(wb, "Medial_amy (n=14)")
+addWorksheet(wb, "Lateral_amy (n=12)")
+
+addWorksheet(wb, "L_Medial_amy (n=2)")
+
+addWorksheet(wb, "R_amy (n=24)")
+addWorksheet(wb, "R_Medial_amy (n=12)")
+addWorksheet(wb, "R_Lateral_amy (n=12)")
+
+# write stats data in each sheet
+writeData(wb, "Whole_amy (n=26)", stats_amy_sig[c(3,1,2,4:6)])
+writeData(wb, "Medial_amy (n=14)", stats_amy_me_sig[c(3,1,2,4:6)])
+writeData(wb, "Lateral_amy (n=12)", stats_amy_la_sig[c(3,1,2,4:6)])
+
+writeData(wb, "L_Medial_amy (n=2)", stats_amy_me_L_sig[c(3,1,2,4:6)])
+
+writeData(wb, "R_amy (n=24)", stats_amy_R_sig[c(3,1,2,4:6)])
+writeData(wb, "R_Medial_amy (n=12)", stats_amy_me_R_sig[c(3,1,2,4:6)])
+writeData(wb, "R_Lateral_amy (n=12)", stats_amy_la_R_sig[c(3,1,2,4:6)])
+
+# save Excel
+saveWorkbook(wb, "iES_R_VLPFC_Stats.xlsx", overwrite = TRUE)
+```
+
+
+
+# TMS-iEEG
+
+## TMS DLPFC stim
+
+```{r TMS L DLPFC}
+load("C:/Users/xjl19/OneDrive - University of Iowa/1_TMS_iEEG/3_ProcessedData_Backup/iTEP_csv_L-DLPFC_amy/iTEPamy_removed_cleaned.RData")
+stats_amy_sig$Estimate <- -stats_amy_sig$Estimate
+stats_amy_me_sig$Estimate <- -stats_amy_me_sig$Estimate
+stats_amy_la_sig$Estimate <- -stats_amy_la_sig$Estimate
+
+stats_amy_L_sig$Estimate <- -stats_amy_L_sig$Estimate
+stats_amy_L_me$Estimate <- -stats_amy_L_me$Estimate
+stats_amy_L_la$Estimate <- -stats_amy_L_la$Estimate
+
+stats_amy_R_sig$Estimate <- -stats_amy_R_sig$Estimate
+stats_amy_R_me$Estimate <- -stats_amy_R_me$Estimate
+stats_amy_R_la$Estimate <- -stats_amy_R_la$Estimate
+
+stats_amy_sig$t.value <- -stats_amy_sig$t.value
+stats_amy_me_sig$t.value <- -stats_amy_me_sig$t.value
+stats_amy_la_sig$t.value <- -stats_amy_la_sig$t.value
+
+stats_amy_L_sig$t.value <- -stats_amy_L_sig$t.value
+stats_amy_L_me$t.value <- -stats_amy_L_me$t.value
+stats_amy_L_la$t.value <- -stats_amy_L_la$t.value
+
+stats_amy_R_sig$t.value <- -stats_amy_R_sig$t.value
+stats_amy_R_me$t.value <- -stats_amy_R_me$t.value
+stats_amy_R_la$t.value <- -stats_amy_R_la$t.value
+
+wb <- createWorkbook()
+# add sheets for each sub-amy
+addWorksheet(wb, "Whole_amy (n=30)")
+addWorksheet(wb, "Medial_amy (n=18)")
+addWorksheet(wb, "Lateral_amy (n=12)")
+
+addWorksheet(wb, "L_amy (n=8)")
+addWorksheet(wb, "L_Medial_amy (n=3)")
+addWorksheet(wb, "L_Lateral_amy (n=5)")
+
+addWorksheet(wb, "R_amy (n=22)")
+addWorksheet(wb, "R_Medial_amy (n=15)")
+addWorksheet(wb, "R_Lateral_amy (n=7)")
+
+# write stats data in each sheet
+writeData(wb, "Whole_amy (n=30)", stats_amy_sig[c(5,1:4,6:8)])
+writeData(wb, "Medial_amy (n=18)", stats_amy_me_sig[c(5,1:4,6:8)])
+writeData(wb, "Lateral_amy (n=12)", stats_amy_la_sig[c(5,1:4,6:8)])
+
+writeData(wb, "L_amy (n=8)", stats_amy_L_sig[c(5,1:4,6:8)])
+writeData(wb, "L_Medial_amy (n=3)", stats_amy_L_me[c(5,1:4,6:8)])
+writeData(wb, "L_Lateral_amy (n=5)", stats_amy_L_la[c(5,1:4,6:8)])
+
+writeData(wb, "R_amy (n=22)", stats_amy_R_sig[c(5,1:4,6:8)])
+writeData(wb, "R_Medial_amy (n=15)", stats_amy_R_me[c(5,1:4,6:8)])
+writeData(wb, "R_Lateral_amy (n=7)", stats_amy_R_la[c(5,1:4,6:8)])
+
+# save Excel
+saveWorkbook(wb, "TMS_L_DLPFC_Stats.xlsx", overwrite = TRUE)
+```
+
+```{r TMS R DLPFC}
+load("C:/Users/xjl19/OneDrive - University of Iowa/1_TMS_iEEG/3_ProcessedData_Backup/iTEP_csv_R-DLPFC_amy/iTEPamy_R-DLPFC_removed_cleaned.RData")
+stats_amy_L_sig$Estimate <- -stats_amy_L_sig$Estimate
+stats_amy_L_sig$t.value <- -stats_amy_L_sig$t.value
+
+wb <- createWorkbook()
+# add sheets for each sub-amy
+addWorksheet(wb, "L_Lateral_amy (n=3)")
+
+# write stats data in each sheet
+writeData(wb, "L_Lateral_amy (n=3)", stats_amy_L_sig[c(5,1:4,6:8)])
+
+# save Excel
+saveWorkbook(wb, "TMS_R_DLPFC_Stats.xlsx", overwrite = TRUE)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

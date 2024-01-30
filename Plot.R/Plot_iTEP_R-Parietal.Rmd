@@ -1,0 +1,190 @@
+---
+title: "Plot iTEP"
+author: "Xianqing"
+date: "3/17/2023"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(readr)
+library(patchwork)
+library(ggsignif)
+library(psych) # load correlation
+library(RColorBrewer)#color
+figDir = "/Users/xianqing/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/1_Figures"
+setwd(figDir)
+```
+
+```{r waveform whole AMY SDchange and itep}
+normwave_amy <- TEP_amy_avg %>% 
+  group_by(Time, Condition) %>%
+  summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(19)) %>% 
+  filter(Condition != "fake" & Time >=-250 & Time <= 500)
+
+normwave_amy_L <- TEP_amy_avg %>% 
+  filter(DKT == "Left-Amygdala" & Condition != "fake" & Time >=-250 & Time <= 500) %>%
+  group_by(Time, Condition) %>% 
+  summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(12)) 
+
+normwave_amy_R <- TEP_amy_avg %>% 
+  filter(DKT == "Right-Amygdala" & Condition != "fake" & Time >=-250 & Time <= 500) %>%
+  group_by(Time, Condition) %>%
+  summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(7))
+
+normwave_amy_me <- TEP_amy_avg %>% 
+  filter(is_lateral == 0 & Condition != "fake" & Time <= 500 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% 
+  summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(9)) 
+
+normwave_amy_me_L <- TEP_amy_avg %>% filter(is_lateral == 0 & DKT == "Left-Amygdala" & Time <= 500 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(5)) 
+
+normwave_amy_me_R <- TEP_amy_avg %>% filter(is_lateral == 0 & DKT == "Right-Amygdala" & Time <= 500 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(4)) 
+
+normwave_amy_la <- TEP_amy_avg %>% 
+  filter(is_lateral == 1 & DKT == "Left-Amygdala" & Condition != "fake" & Time <= 500 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% 
+  summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(10)) 
+
+normwave_amy_la_L <- TEP_amy_avg %>% filter(is_lateral == 1 & Condition != "fake" & Time <= 500 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(7)) 
+
+normwave_amy_la_R <- TEP_amy_avg %>% filter(is_lateral == 1 & DKT == "Right-Amygdala" & Time <= 500 & Time >= -250) %>% 
+  group_by(Condition, Time) %>% summarise(norm = mean(iTEP_norm), se = sd(iTEP_norm)/sqrt(3)) 
+```
+
+```{r}
+normwave_amy <- normwave_amy %>% mutate(subdivision = "Whole")
+normwave_amy_me <- normwave_amy_me %>% mutate(subdivision = "Medial")
+normwave_amy_la <- normwave_amy_la %>% mutate(subdivision = "Lateral")
+normwave_bi <- rbind(normwave_amy, normwave_amy_me, normwave_amy_la)
+normwave_bi$subdivision <- paste(normwave_bi$subdivision, normwave_bi$Condition, sep = " ")
+
+p.norm_bi <- normwave_bi %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, size = .4, col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = subdivision, alpha =Condition))+
+  # geom_line(aes(col = subdivision, linetype = Condition),size=1.2)+
+  geom_line(aes(col = subdivision, linetype = Condition, size=Condition))+
+  scale_size_manual(values=c(1,0.7))+
+  scale_alpha_manual(values=c(.17,.1))+
+  # cluster
+  annotate("rect", xmin=52, xmax=97, ymin=5.9, ymax=6.2, fill="dodgerblue3")+
+  annotate("rect", xmin=349, xmax=410, ymin=5.9, ymax=6.2, fill="dodgerblue3")+
+  annotate("rect", xmin=50, xmax=95, ymin=5.1, ymax=5.4, fill="maroon3")+
+  annotate("rect", xmin=333, xmax=410, ymin=5.1, ymax=5.4, fill="maroon3")+
+
+  annotate("rect", xmin=-13, xmax=27, ymin=-6, ymax=6.2, fill="white")+
+  annotate("rect", xmin=-13, xmax=27, ymin=-2.5, ymax=2.5, fill="gray")+
+  scale_color_manual(values=c("maroon3","maroon3","green4","green4",
+                              "dodgerblue3","dodgerblue3"))+
+  scale_fill_manual(values=c("maroon3","maroon3","green4","green4",
+                              "dodgerblue3","dodgerblue3"))+
+  scale_y_continuous(limits=c(-6,6.2), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-250,500), breaks = c(-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+ylab("Amplitude (SD)")+ 
+  ggtitle("Bilateral AMY, medial = 9, lateral = 10")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.6))+
+  theme(axis.ticks=element_line(color="black",size=.6,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  # theme(legend.text = element_text(color = "black", size = rel(1.5)),
+  # legend.position=c(0.2,0.3))+labs(fill="",col="",linetype ="")
+  theme(legend.position="none")
+p.norm_bi
+
+```
+
+```{r}
+normwave_amy_L <- normwave_amy_L %>% mutate(subdivision = "Whole")
+normwave_amy_me_L <- normwave_amy_me_L %>% mutate(subdivision = "Medial")
+normwave_amy_la_L <- normwave_amy_la_L %>% mutate(subdivision = "Lateral")
+normwave_L <- rbind(normwave_amy_L, normwave_amy_me_L, normwave_amy_la_L)
+normwave_L$subdivision <- paste(normwave_L$subdivision, normwave_L$Condition, sep = " ")
+
+p.norm_L <- normwave_L %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, size = .4, col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = subdivision, alpha =Condition))+
+  # geom_line(aes(col = subdivision, linetype = Condition),size=1.2)+
+  geom_line(aes(col = subdivision, linetype = Condition, size=Condition))+
+  scale_size_manual(values=c(1,0.7))+
+  scale_alpha_manual(values=c(.17,.1))+
+    # cluster
+  annotate("rect", xmin=348, xmax=409, ymin=5.1, ymax=5.4, fill="maroon3")+
+  annotate("rect", xmin=-11, xmax=26, ymin=-2, ymax=2, fill="gray")+
+  scale_color_manual(values=c("maroon3","maroon3","green4","green4",
+                              "dodgerblue3","dodgerblue3"))+
+  scale_fill_manual(values=c("maroon3","maroon3","green4","green4",
+                              "dodgerblue3","dodgerblue3"))+
+  scale_y_continuous(limits=c(-6,6.2), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-250,500), breaks = c(-300,-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+ylab("Amplitude (SD)")+ 
+  ggtitle("Left AMY, medial = 5, lateral = 7")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.6))+
+  theme(axis.ticks=element_line(color="black",size=.6,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.position="none")
+p.norm_L
+```
+
+```{r}
+normwave_amy_R <- normwave_amy_R %>% mutate(subdivision = "Whole")
+normwave_amy_me_R <- normwave_amy_me_R %>% mutate(subdivision = "Medial")
+normwave_amy_la_R <- normwave_amy_la_R %>% mutate(subdivision = "Lateral")
+normwave_R <- rbind(normwave_amy_R, normwave_amy_me_R, normwave_amy_la_R)
+normwave_R$subdivision <- paste(normwave_R$subdivision, normwave_R$Condition, sep = " ")
+
+p.norm_R <- normwave_R %>% ggplot(aes(Time, norm))+
+  geom_hline(yintercept=0, size = .4, col = "darkgray")+
+  geom_ribbon(aes(ymin=norm-se, ymax=norm+se, fill = subdivision, alpha =Condition))+
+  # geom_line(aes(col = subdivision, linetype = Condition),size=1.2)+
+  geom_line(aes(col = subdivision, linetype = Condition, size=Condition))+
+  scale_size_manual(values=c(1,0.7))+
+  scale_alpha_manual(values=c(.17,.1))+
+  # cluster
+  annotate("rect", xmin=133, xmax=170, ymin=5.9, ymax=6.2, fill="dodgerblue3")+
+  annotate("rect", xmin=199, xmax=255, ymin=5.9, ymax=6.2, fill="dodgerblue3")+
+  annotate("rect", xmin=264, xmax=330, ymin=5.9, ymax=6.2, fill="dodgerblue3")+
+  annotate("rect", xmin=276, xmax=327, ymin=5.5, ymax=5.8, fill="green4")+
+  annotate("rect", xmin=53, xmax=82, ymin=5.1, ymax=5.4, fill="maroon3")+
+  annotate("rect", xmin=193, xmax=255, ymin=5.1, ymax=5.4, fill="maroon3")+
+  annotate("rect", xmin=256, xmax=323, ymin=5.1, ymax=5.4, fill="maroon3")+
+  annotate("rect", xmin=-11, xmax=26, ymin=-2.2, ymax=2.2, fill="gray")+
+  scale_color_manual(values=c("maroon3","maroon3","green4","green4",
+                              "dodgerblue3","dodgerblue3"))+
+  scale_fill_manual(values=c("maroon3","maroon3","green4","green4",
+                              "dodgerblue3","dodgerblue3"))+
+  scale_y_continuous(limits=c(-6,6.2), breaks = c(-5,0,5))+
+  scale_x_continuous(limits=c(-250,500), breaks = c(-200,-100,0,100,200,300,400,500))+
+  xlab("Time (ms)")+ylab("Amplitude (SD)")+ 
+  ggtitle("Right AMY, medial = 4, lateral = 3")+theme_classic()+
+  theme(axis.line=element_line(linetype=1,color="black",size=.6))+
+  theme(axis.ticks=element_line(color="black",size=.6,lineend = 12))+
+  theme(axis.text = element_text(color = "black", size = rel(1.5)))+
+  theme(axis.title = element_text(color = "black", size = 18))+
+  theme(plot.title = element_text(color = "black", size = 18))+
+  theme(legend.position="none")+labs(fill="",col="",linetype ="")
+p.norm_R
+```
+
+
+```{r}
+figDir = "/Users/xianqliu/Library/CloudStorage/OneDrive-UniversityofIowa/1_TMS_iEEG/1_Figures"
+setwd(figDir)
+filename <- "iTEP_R-Parietal_2hp_detrend500_Cluster.pdf"
+pdf(file = filename, height = 4.4, width = 5.8)
+p.norm_bi
+p.norm_L
+p.norm_R
+dev.off()
+```
+
