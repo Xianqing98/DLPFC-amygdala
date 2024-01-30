@@ -11,7 +11,7 @@
 - [Statistics.R] - R scripts for prelim statistical analyses.
 
 
-###1 Scripts in [Preprocess.m]
+### Scripts in [Preprocess.m]
 
 - LL_Process_NLX_Files.m/LL_Process_NLX_Files_esTT.m - Uses LL_Process_Queue.xlsx in [Preprocess.xlsx] to pull nlx files and do filtering, artifact rejection, etc. and convert everything to MATLAB formats.
 
